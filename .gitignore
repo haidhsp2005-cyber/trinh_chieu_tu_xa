@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Project caches and runtime data
+app/cache/
+app/uploads/cache/
+**/cache/
+*.png
+!app/static/**/*.png
+*.pdf
+test_*.pdf
+
+# Environment variables & API keys
+.env
+.env.local
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+*.log
+Thumbs.db
+Desktop.ini
+.DS_Store

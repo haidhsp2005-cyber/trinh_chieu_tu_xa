@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: trinh-chieu-tu-xa
+    env: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: GEMINI_API_KEY
+        sync: false

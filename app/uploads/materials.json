@@ -1,0 +1,62 @@
+[
+  {
+    "id": "f9d7e0a0",
+    "title": "Tin học 11 bài 1",
+    "subject": "Tin học",
+    "grade": "11",
+    "filename": "TH11-B1.pptx",
+    "filepath": "app/uploads/1aa18945_TH11-B1.pptx",
+    "format": "pptx",
+    "size_kb": 12408.5,
+    "created_at": "06/10/2026 23:33",
+    "allow_download": true
+  },
+  {
+    "id": "91e82196",
+    "title": "huong dan dang bai viet tren web truong",
+    "subject": "Test",
+    "grade": "10",
+    "filename": "huong dan dang bai viet tren web truong.pptx",
+    "filepath": "app/uploads/0962c3c7_huong dan dang bai viet tren web truong.pptx",
+    "format": "pptx",
+    "size_kb": 7544.6,
+    "created_at": "06/10/2026 23:31",
+    "allow_download": true
+  },
+  {
+    "id": "8ffc9f17",
+    "title": "PPCT ",
+    "subject": "Tin",
+    "grade": "12",
+    "filename": "CĐ THUD_Tin10_KNTT_TT5512.docx",
+    "filepath": "app/uploads/c57b3bde_CĐ THUD_Tin10_KNTT_TT5512.docx",
+    "format": "docx",
+    "size_kb": 500.9,
+    "created_at": "06/10/2026 23:24",
+    "allow_download": true
+  },
+  {
+    "id": "624a65bb",
+    "title": "Ôn Tập",
+    "subject": "Toán học",
+    "grade": "11",
+    "filename": "File ghép.pdf",
+    "filepath": "app/uploads/271315ad_File ghép.pdf",
+    "format": "pdf",
+    "size_kb": 8364.9,
+    "created_at": "06/10/2026 23:21",
+    "allow_download": true
+  },
+  {
+    "id": "581d230c",
+    "title": "Định luât 3 Niu Tơn",
+    "subject": "Vật lý",
+    "grade": "10",
+    "filename": "mau_bai_giang_ba_dinh_luat_newton.pptx",
+    "filepath": "app/uploads/d80460b9_mau_bai_giang_ba_dinh_luat_newton.pptx",
+    "format": "pptx",
+    "size_kb": 40.0,
+    "created_at": "06/10/2026 23:17",
+    "allow_download": true
+  }
+]

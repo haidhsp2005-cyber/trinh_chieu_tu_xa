@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Studio Trình Chiếu - {{ session.title }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- QR Code Generator Lib -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .laser-dot {
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background-color: #ef4444;
+            box-shadow: 0 0 15px 4px #ef4444, 0 0 25px 8px #f87171;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 50;
+            transition: transform 0.04s ease-out;
+        }
+        .canvas-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            touch-action: none;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-950 text-white h-screen flex flex-col overflow-hidden select-none">
+
+    <!-- Top Teacher Bar -->
+    <header class="bg-slate-900 border-b border-slate-800 px-4 h-14 flex items-center justify-between z-30 shrink-0">
+        <div class="flex items-center space-x-3">
+            <a href="/" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition" title="Về trang chủ">
+                <i class="fa-solid fa-arrow-left"></i>
+            </a>
+            <div class="h-5 w-px bg-slate-800"></div>
+            <div>
+                <h1 class="text-sm font-bold truncate max-w-xs sm:max-w-md text-slate-100" id="header-title">{{ session.title }}</h1>
+                <p class="text-[11px] text-slate-400">Phòng: <span class="font-mono text-blue-400 font-semibold">{{ room_id }}</span></p>
+            </div>
+        </div>
+
+        <!-- Student Count Indicator & Actions -->
+        <div class="flex items-center space-x-2 sm:space-x-3">
+            <!-- Đổi bài giảng nhanh dropdown -->
+            <div class="relative hidden md:block">
+                <select id="select-change-material" onchange="changeMaterial(this.value)" class="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    {% for m in all_materials %}
+                    <option value="{{ m.id }}" {% if m.id == session.material_id %}selected{% endif %}>
+                        📖 {{ m.title[:30] }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Live Students Count Badge -->
+            <div class="flex items-center space-x-2 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-full text-xs text-slate-300 font-semibold">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+                <span><span id="student-counter">0</span> HS đang xem</span>
+            </div>
+
+            <!-- Nút Chia sẻ bài giảng nổi bật -->
+            <button onclick="openShareModal()" class="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg shadow-blue-500/25 flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-share-nodes"></i>
+                <span>Chia sẻ bài giảng</span>
+            </button>
+
+            <!-- Nút Chia sẻ Màn hình (WebRTC) -->
+            <button id="btn-screen-share" onclick="toggleScreenShare()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-display text-blue-400"></i>
+                <span class="hidden sm:inline" id="screen-share-text">Chia sẻ màn hình</span>
+            </button>
+
+            <!-- Bật tắt Drawer Danh sách Slide -->
+            <button onclick="toggleSlideDrawer()" id="btn-drawer-toggle" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition" title="Xem danh sách tất cả các trang slide">
+                <i class="fa-solid fa-table-cells-large text-amber-400"></i>
+                <span class="hidden sm:inline">Danh sách Slide</span>
+            </button>
+
+            <!-- Fullscreen -->
+            <button onclick="toggleFullScreen()" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition" title="Toàn màn hình">
+                <i class="fa-solid fa-expand"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Presentation Main Area with Optional Slide Drawer -->
+    <div class="flex-1 flex overflow-hidden relative">
+
+        <!-- Main Stage Container -->
+        <main class="flex-1 relative flex items-center justify-center p-3 bg-slate-950 overflow-hidden">
+            
+            <!-- Scrollable Stage Container -->
+            <div id="stage-scroll-container" class="relative w-full h-full max-h-[calc(100vh-140px)] overflow-y-auto overflow-x-hidden flex justify-center items-start custom-scroll" onscroll="handleScroll(event)">
+                
+                <!-- Slide Content Wrapper (Adaptive width & zoomable) -->
+                <div id="stage-wrapper" class="relative w-full max-w-4xl bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-center border border-slate-800 transition-all duration-150 my-auto">
+                    
+                    <!-- 1. SLIDE DISPLAY CONTAINER -->
+                    <div id="slide-container" class="w-full relative flex flex-col items-center justify-center">
+                        <!-- If Image mode (PDF rendered pages) -->
+                        <img id="slide-img" src="" alt="Slide Page" class="w-full h-auto object-contain hidden pointer-events-none transition-all block">
+
+                        <!-- If Card mode (PPTX/DOCX or generated AI slides) -->
+                        <div id="slide-card" class="w-full p-6 sm:p-10 flex flex-col justify-between hidden bg-gradient-to-br from-slate-50 to-blue-50/30 min-h-[450px]">
+                            <div>
+                                <!-- Slide Header Badge & Title -->
+                                <div class="border-b-2 border-blue-600 pb-3 mb-5">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <span id="card-badge" class="text-xs font-extrabold uppercase tracking-wider text-blue-600 flex items-center space-x-1">
+                                            <i class="fa-solid fa-chalkboard text-blue-500 mr-1"></i>
+                                            <span>BÀI HỌC TRỰC TUYẾN</span>
+                                        </span>
+                                        <span id="card-page-badge" class="px-2.5 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-bold font-mono">Trang 1 / 1</span>
+                                    </div>
+                                    <h2 id="card-title" class="text-xl sm:text-2xl lg:text-3xl font-extrabold text-slate-900 leading-tight">Tiêu đề Slide</h2>
+                                </div>
+
+                                <!-- Slide Bullets -->
+                                <ul id="card-bullets" class="space-y-3.5 text-slate-800 text-sm sm:text-lg font-medium list-none">
+                                    <!-- Bullets dynamically injected -->
+                                </ul>
+                            </div>
+
+                            <!-- Card Footer -->
+                            <div class="pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 mt-6">
+                                <span class="flex items-center space-x-1"><i class="fa-solid fa-graduation-cap text-blue-600"></i><span>SmartClassroom Presentation</span></span>
+                                <span id="card-page-indicator" class="font-semibold text-slate-500">Trang 1</span>
+                            </div>
+                        </div>
+
+                        <!-- If Empty / Whiteboard mode -->
+                        <div id="whiteboard-notice" class="text-center p-8 text-slate-400">
+                            <i class="fa-solid fa-chalkboard text-5xl mb-3 text-slate-300"></i>
+                            <h3 class="text-lg font-bold text-slate-600 mb-1">Bảng trắng tương tác trực tiếp</h3>
+                            <p class="text-xs text-slate-400 mb-4">Bạn có thể dùng bút vẽ hoặc chọn một bài giảng PowerPoint từ kho để trình chiếu.</p>
+                            {% if all_materials %}
+                            <button onclick="changeMaterial('{{ all_materials[0].id }}')" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow transition">
+                                <i class="fa-solid fa-play mr-1"></i> Mở bài giảng: {{ all_materials[0].title[:30] }}
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- 2. SCREEN SHARE VIDEO STREAM (Hidden until screen shared) -->
+                    <video id="screen-video" autoplay playsinline muted class="w-full h-full object-contain bg-black hidden z-10"></video>
+
+                    <!-- 3. DRAWING & LASER OVERLAY CANVAS -->
+                    <canvas id="paint-canvas" class="canvas-overlay"></canvas>
+
+                    <!-- 4. LASER POINTER DOT -->
+                    <div id="laser-dot" class="laser-dot hidden"></div>
+
+                    <!-- 5. FLOATING QUICK NEXT/PREV ARROWS ON SLIDE EDGES -->
+                    <button onclick="prevPage()" id="arrow-prev" class="fixed left-6 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-slate-900/60 hover:bg-blue-600 text-white flex items-center justify-center transition backdrop-blur z-30 shadow-2xl disabled:opacity-0 pointer-events-auto border border-slate-700" title="Trang trước (Phím mũi tên trái)">
+                        <i class="fa-solid fa-chevron-left text-lg"></i>
+                    </button>
+                    <button onclick="nextPage()" id="arrow-next" class="fixed right-6 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-slate-900/60 hover:bg-blue-600 text-white flex items-center justify-center transition backdrop-blur z-30 shadow-2xl disabled:opacity-0 pointer-events-auto border border-slate-700" title="Trang sau (Phím cách / mũi tên phải)">
+                        <i class="fa-solid fa-chevron-right text-lg"></i>
+                    </button>
+                </div>
+
+            </div>
+
+        </main>
+
+        <!-- Slide Thumbnails Drawer (Sidebar Danh sách Slide) -->
+        <aside id="slide-drawer" class="w-72 bg-slate-900 border-l border-slate-800 flex flex-col transition-all duration-300 z-20 shrink-0 hidden">
+            <div class="p-3 border-b border-slate-800 flex items-center justify-between">
+                <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
+                    <i class="fa-solid fa-layer-group text-blue-400"></i>
+                    <span>Tất cả Slide (<span id="drawer-total-count">0</span>)</span>
+                </h3>
+                <button onclick="toggleSlideDrawer()" class="text-slate-400 hover:text-white text-xs p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <!-- Slide list container -->
+            <div id="drawer-slide-list" class="flex-1 overflow-y-auto p-3 space-y-2.5">
+                <!-- Dynamically generated slide cards -->
+            </div>
+        </aside>
+
+    </div>
+
+    <!-- ALWAYS VISIBLE FIXED BOTTOM PRESENTER DOCK -->
+    <footer class="h-16 bg-slate-900 border-t border-slate-800 px-3 sm:px-6 flex items-center justify-between shrink-0 z-40 relative shadow-2xl">
+        
+        <!-- PPT Navigation Controls (Left side) -->
+        <div class="flex items-center space-x-1.5 sm:space-x-3">
+            <button onclick="goToPage(1)" id="btn-first" class="px-2.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition flex items-center space-x-1" title="Về trang đầu tiên">
+                <i class="fa-solid fa-backward-step"></i>
+            </button>
+            <button onclick="prevPage()" id="btn-prev" class="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md transition flex items-center space-x-1.5 disabled:opacity-30 disabled:cursor-not-allowed">
+                <i class="fa-solid fa-arrow-left"></i>
+                <span class="hidden sm:inline">Trang trước</span>
+            </button>
+            
+            <!-- Page Number Selector / Jumper -->
+            <div class="flex items-center bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 space-x-1 text-xs font-bold">
+                <span class="text-slate-400">Trang</span>
+                <span id="current-page-text" class="text-white text-sm font-extrabold font-mono px-1">1</span>
+                <span class="text-slate-600">/</span>
+                <span id="total-page-text" class="text-slate-300 font-mono">1</span>
+            </div>
+
+            <button onclick="nextPage()" id="btn-next" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md transition flex items-center space-x-1.5 disabled:opacity-30 disabled:cursor-not-allowed">
+                <span>Trang sau</span>
+                <i class="fa-solid fa-arrow-right"></i>
+            </button>
+        </div>
+
+        <!-- Zoom & Fit Controls (Center) -->
+        <div class="flex items-center space-x-1 sm:space-x-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+            <button onclick="changeZoom(-0.25)" class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition flex items-center justify-center" title="Thu nhỏ (-)">
+                <i class="fa-solid fa-minus"></i>
+            </button>
+            <button onclick="resetZoom()" id="btn-zoom-level" class="px-2 py-1 text-xs font-bold text-slate-200 hover:text-blue-400 font-mono" title="Bấm để đặt lại 100%">
+                100%
+            </button>
+            <button onclick="changeZoom(0.25)" class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition flex items-center justify-center" title="Phóng to (+)">
+                <i class="fa-solid fa-plus"></i>
+            </button>
+            <div class="h-4 w-px bg-slate-800"></div>
+            <button onclick="toggleFitMode()" id="btn-fit-mode" class="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-500 transition flex items-center space-x-1" title="Chuyển chế độ: Vừa bề ngang (Chữ to) hoặc Vừa toàn khung">
+                <i class="fa-solid fa-arrows-left-right-to-line"></i>
+                <span class="hidden md:inline" id="text-fit-mode">Vừa chiều rộng</span>
+            </button>
+        </div>
+
+        <!-- Interactive Teaching Tools (Pointer, Laser, Pen, Highlighter, Clear) -->
+        <div class="flex items-center space-x-1 sm:space-x-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+            <button onclick="setTool('cursor')" id="tool-cursor" class="px-3 py-1.5 rounded-xl text-xs font-bold transition bg-blue-600 text-white flex items-center space-x-1.5" title="Con trỏ chuột">
+                <i class="fa-solid fa-arrow-pointer"></i>
+                <span class="hidden md:inline">Chuột</span>
+            </button>
+            <button onclick="setTool('laser')" id="tool-laser" class="px-3 py-1.5 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white flex items-center space-x-1.5" title="Bút Laser phát sáng">
+                <i class="fa-solid fa-bullseye text-red-500"></i>
+                <span class="hidden md:inline">Laser</span>
+            </button>
+            <button onclick="setTool('pen')" id="tool-pen" class="px-3 py-1.5 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white flex items-center space-x-1.5" title="Bút vẽ đỏ">
+                <i class="fa-solid fa-pen text-rose-400"></i>
+                <span class="hidden md:inline">Bút vẽ</span>
+            </button>
+            <button onclick="setTool('highlighter')" id="tool-highlighter" class="px-3 py-1.5 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white flex items-center space-x-1.5" title="Bút dạ quang vàng">
+                <i class="fa-solid fa-highlighter text-amber-400"></i>
+                <span class="hidden md:inline">Highlight</span>
+            </button>
+            <div class="h-5 w-px bg-slate-800"></div>
+            <button onclick="clearCanvas()" class="px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-rose-400 hover:bg-slate-900 transition" title="Xóa toàn bộ nét vẽ">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        </div>
+
+        <!-- Right Side Quick Info -->
+        <div class="hidden lg:flex items-center space-x-3 text-xs text-slate-400">
+            <span class="px-2.5 py-1 bg-slate-800/80 rounded-lg border border-slate-700/50">Phím tắt: Space / ◀ ▶ / L (Laser) / P (Bút)</span>
+        </div>
+    </footer>
+
+    <!-- MODAL CHIA SẺ BÀI GIẢNG (1-CLICK SHARE MODAL) -->
+    <div id="share-modal" class="fixed inset-0 bg-slate-950/75 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white text-slate-900 rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-100 relative">
+            <button onclick="closeShareModal()" class="absolute right-6 top-6 text-slate-400 hover:text-slate-600 transition">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+
+            <div class="text-center mb-6">
+                <div class="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl mx-auto mb-3 shadow-inner">
+                    <i class="fa-solid fa-tower-broadcast"></i>
+                </div>
+                <h3 class="text-xl font-extrabold text-slate-900">Chia sẻ với học sinh</h3>
+                <p class="text-xs text-slate-500">Học sinh mở link trên máy tính hoặc quét mã QR là xem trực tiếp ngay</p>
+            </div>
+
+            <!-- Student Direct URL Copy Box -->
+            <div class="mb-5">
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">Đường link trực tiếp cho học sinh</label>
+                <div class="flex items-center space-x-2">
+                    <input type="text" id="share-url-input" readonly class="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono text-slate-700 select-all focus:outline-none">
+                    <button onclick="copyShareUrl()" id="btn-copy-url" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center space-x-1.5 shrink-0">
+                        <i class="fa-solid fa-copy"></i>
+                        <span>Sao chép</span>
+                    </button>
+                </div>
+                <p id="copy-toast" class="text-[11px] text-emerald-600 font-bold mt-1.5 hidden"><i class="fa-solid fa-check mr-1"></i>Đã sao chép link vào bộ nhớ tạm!</p>
+            </div>
+
+            <!-- QR Code Section -->
+            <div class="bg-slate-50 rounded-2xl p-4 border border-slate-200 flex flex-col items-center justify-center mb-5">
+                <div id="qrcode-container" class="bg-white p-3 rounded-xl shadow-sm border border-slate-200 mb-2"></div>
+                <p class="text-[11px] font-semibold text-slate-500">Học sinh có thể dùng Camera điện thoại / iPad quét mã này</p>
+            </div>
+
+            <!-- LAN Classroom IP Note -->
+            <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 flex items-start space-x-2">
+                <i class="fa-solid fa-circle-info text-amber-600 text-xs mt-0.5"></i>
+                <span>Trong phòng tin học hoặc cùng mạng WiFi trường, học sinh truy cập: <strong class="font-mono text-amber-900" id="lan-hint-url"></strong></span>
+            </div>
+
+            <div class="mt-6 flex justify-end">
+                <button onclick="closeShareModal()" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition">
+                    Đóng và tiếp tục giảng dạy
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- INITIAL SESSION DATA INJECTION -->
+    <script>
+        window.INITIAL_SESSION = {{ session | tojson }};
+        window.ROOM_ID = "{{ room_id }}";
+        window.LAN_IP = "{{ lan_ip }}";
+        var INITIAL_SESSION = window.INITIAL_SESSION;
+        var ROOM_ID = window.ROOM_ID;
+        var LAN_IP = window.LAN_IP;
+    </script>
+    <script src="/static/js/teacher.js?v=3"></script>
+</body>
+</html>
