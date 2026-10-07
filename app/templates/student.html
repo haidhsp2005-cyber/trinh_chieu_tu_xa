@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
     <title>Học Trực Tuyến - {{ room_title }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
@@ -30,41 +30,45 @@
             z-index: 20;
             pointer-events: none;
         }
+        .custom-scroll {
+            -webkit-overflow-scrolling: touch;
+            scroll-behavior: smooth;
+        }
     </style>
 </head>
-<body class="bg-slate-950 text-white min-h-screen flex flex-col overflow-hidden select-none">
+<body class="bg-slate-950 text-white h-[100dvh] flex flex-col overflow-hidden select-none">
 
     <!-- Top Student Floating Pill Bar -->
-    <header class="h-12 bg-slate-900/80 backdrop-blur border-b border-slate-800/80 px-4 flex items-center justify-between z-30 shrink-0">
-        <div class="flex items-center space-x-3">
-            <span class="flex h-2.5 w-2.5 relative">
+    <header class="h-11 sm:h-12 bg-slate-900/90 backdrop-blur border-b border-slate-800/80 px-3 sm:px-4 flex items-center justify-between z-30 shrink-0">
+        <div class="flex items-center space-x-2 sm:space-x-3 overflow-hidden">
+            <span class="flex h-2.5 w-2.5 relative shrink-0">
                 <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
             </span>
-            <div class="flex items-center space-x-2">
-                <span class="text-xs font-bold text-slate-100 truncate max-w-xs sm:max-w-md" id="room-title-text">{{ room_title }}</span>
-                <span class="text-[10px] px-2 py-0.5 bg-blue-900/60 text-blue-300 font-semibold rounded-full border border-blue-700/50">Trực tiếp</span>
+            <div class="flex items-center space-x-1.5 overflow-hidden">
+                <span class="text-xs font-bold text-slate-100 truncate max-w-[130px] sm:max-w-md" id="room-title-text">{{ room_title }}</span>
+                <span class="text-[9px] sm:text-[10px] px-1.5 py-0.2 bg-blue-900/60 text-blue-300 font-semibold rounded-full border border-blue-700/50 shrink-0">Trực tiếp</span>
             </div>
         </div>
 
-        <div class="flex items-center space-x-3">
-            <span id="sync-status" class="text-[11px] text-emerald-400 font-semibold flex items-center space-x-1">
+        <div class="flex items-center space-x-2 sm:space-x-3 shrink-0">
+            <span id="sync-status" class="text-[10px] sm:text-[11px] text-emerald-400 font-semibold flex items-center space-x-1">
                 <i class="fa-solid fa-cloud-arrow-down"></i>
                 <span class="hidden sm:inline">Đã đồng bộ</span>
             </span>
-            <button onclick="toggleFullScreen()" class="p-1.5 text-slate-400 hover:text-white rounded-lg transition" title="Toàn màn hình">
+            <button onclick="toggleFullScreen()" class="p-1 sm:p-1.5 text-slate-300 hover:text-white bg-slate-800/80 rounded-lg transition" title="Toàn màn hình">
                 <i class="fa-solid fa-expand text-xs"></i>
             </button>
         </div>
     </header>
 
-    <!-- Main Presentation Viewing Stage -->
-    <main class="flex-1 relative flex flex-col items-center justify-start p-1 sm:p-2 bg-slate-950 overflow-hidden">
+    <!-- Main Presentation Viewing Stage (Edge-to-edge on mobile) -->
+    <main class="flex-1 relative flex flex-col items-center justify-start p-0 sm:p-2 bg-slate-950 overflow-hidden">
         
         <!-- Scrollable Stage Container -->
         <div id="stage-scroll-container" class="relative w-full h-full overflow-y-auto overflow-x-hidden flex justify-center items-start custom-scroll">
             
-            <div id="stage-wrapper" class="relative w-full max-w-4xl bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-start border border-slate-800 transition-all duration-150 my-2">
+            <div id="stage-wrapper" class="relative w-full sm:max-w-4xl bg-white text-slate-900 sm:rounded-2xl rounded-none shadow-2xl overflow-hidden flex flex-col items-center justify-start border-0 sm:border border-slate-800 transition-all duration-150 sm:my-2 my-0">
                 
                 <!-- 1. SLIDE DISPLAY CONTAINER -->
                 <div id="slide-container" class="w-full relative flex flex-col items-center justify-start">
@@ -72,26 +76,26 @@
                     <img id="slide-img" src="" alt="Slide Page" class="w-full h-auto object-contain hidden pointer-events-none transition-all block">
 
                     <!-- If Card mode (PPTX/DOCX cards) -->
-                    <div id="slide-card" class="w-full p-6 sm:p-10 flex flex-col justify-between hidden min-h-[450px]">
+                    <div id="slide-card" class="w-full p-4 sm:p-10 flex flex-col justify-between hidden min-h-[350px] sm:min-h-[450px]">
                         <div>
-                            <div class="border-b-2 border-blue-600 pb-3 mb-6">
+                            <div class="border-b-2 border-blue-600 pb-2 sm:pb-3 mb-4 sm:mb-6">
                                 <span class="text-xs font-bold uppercase tracking-wider text-blue-600 mb-1 block">NỘI DUNG BÀI HỌC</span>
-                                <h2 id="card-title" class="text-2xl sm:text-3xl font-extrabold text-slate-900">Tiêu đề bài giảng</h2>
+                                <h2 id="card-title" class="text-xl sm:text-3xl font-extrabold text-slate-900">Tiêu đề bài giảng</h2>
                             </div>
-                            <ul id="card-bullets" class="space-y-4 text-slate-700 text-base sm:text-xl font-medium list-none">
+                            <ul id="card-bullets" class="space-y-3 sm:space-y-4 text-slate-700 text-sm sm:text-xl font-medium list-none">
                                 <!-- Bullets dynamically injected -->
                             </ul>
                         </div>
-                        <div class="pt-4 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 mt-6">
+                        <div class="pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 mt-4 sm:mt-6">
                             <span>SmartClassroom • Lớp học số</span>
                             <span id="card-page-indicator">Trang 1</span>
                         </div>
                     </div>
 
                     <!-- If Waiting for Teacher -->
-                    <div id="waiting-notice" class="text-center p-8 text-slate-400">
-                        <i class="fa-solid fa-spinner fa-spin text-4xl text-blue-500 mb-3"></i>
-                        <h3 class="text-lg font-bold text-slate-700 mb-1">Đang kết nối bài giảng...</h3>
+                    <div id="waiting-notice" class="text-center p-6 sm:p-8 text-slate-400">
+                        <i class="fa-solid fa-spinner fa-spin text-3xl sm:text-4xl text-blue-500 mb-3"></i>
+                        <h3 class="text-base sm:text-lg font-bold text-slate-700 mb-1">Đang kết nối bài giảng...</h3>
                         <p class="text-xs text-slate-400">Thầy/Cô đang chuẩn bị trình chiếu. Hãy giữ màn hình này.</p>
                     </div>
                 </div>
@@ -108,16 +112,32 @@
 
         </div>
 
+        <!-- FLOATING MOBILE TOOL PILL (Cho phép học sinh tự thu phóng và xoay ngang) -->
+        <div class="fixed bottom-12 right-3 z-40 flex items-center bg-slate-900/85 backdrop-blur-md border border-slate-700 rounded-full px-2 py-1 shadow-2xl space-x-1">
+            <button onclick="studentZoom(-0.2)" class="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-xs" title="Thu nhỏ">
+                <i class="fa-solid fa-minus"></i>
+            </button>
+            <span id="student-zoom-text" onclick="studentResetZoom()" class="text-[10px] font-mono font-bold px-1 text-slate-200 cursor-pointer">100%</span>
+            <button onclick="studentZoom(0.2)" class="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-xs" title="Phóng to">
+                <i class="fa-solid fa-plus"></i>
+            </button>
+            <div class="w-px h-3 bg-slate-700 mx-0.5"></div>
+            <button onclick="toggleFullScreen()" class="w-7 h-7 rounded-full bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center text-xs" title="Toàn màn hình">
+                <i class="fa-solid fa-expand"></i>
+            </button>
+        </div>
+
     </main>
 
     <!-- Bottom Indicator Bar -->
-    <footer class="h-10 bg-slate-900/90 border-t border-slate-800/80 px-4 flex items-center justify-between text-xs text-slate-400 shrink-0">
-        <div>
-            Trang hiện tại: <span id="current-page-text" class="font-bold text-white">1</span> / <span id="total-page-text" class="font-bold text-white">1</span>
+    <footer class="h-9 sm:h-10 bg-slate-900/90 border-t border-slate-800/80 px-3 sm:px-4 flex items-center justify-between text-xs text-slate-400 shrink-0">
+        <div class="text-[11px] sm:text-xs">
+            Trang: <span id="current-page-text" class="font-bold text-white">1</span> / <span id="total-page-text" class="font-bold text-white">1</span>
         </div>
-        <div class="flex items-center space-x-2 text-[11px]">
+        <div class="flex items-center space-x-1.5 text-[10px] sm:text-[11px]">
             <i class="fa-solid fa-shield-halved text-emerald-400"></i>
-            <span>Đồng bộ tự động theo thao tác của Thầy/Cô</span>
+            <span class="hidden sm:inline">Đồng bộ tự động theo thao tác của Thầy/Cô</span>
+            <span class="sm:hidden text-emerald-400 font-semibold">Đồng bộ tự động</span>
         </div>
     </footer>
 

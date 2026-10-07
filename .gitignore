@@ -16,6 +16,7 @@ app/uploads/cache/
 *.png
 !app/static/**/*.png
 *.pdf
+!app/uploads/*.pdf
 test_*.pdf
 
 # Environment variables & API keys

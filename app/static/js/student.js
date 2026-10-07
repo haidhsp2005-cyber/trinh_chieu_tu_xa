@@ -185,8 +185,45 @@ function applyZoomAndFit(zoom = currentZoom, fitMode = currentFitMode) {
         }
     }
 
+    const zoomText = document.getElementById('student-zoom-text');
+    if (zoomText) zoomText.textContent = `${Math.round(currentZoom * 100)}%`;
+
     setTimeout(setupCanvasResolution, 60);
 }
+
+function studentZoom(delta) {
+    currentZoom = Math.max(0.75, Math.min(2.5, currentZoom + delta));
+    applyZoomAndFit(currentZoom, currentFitMode);
+}
+
+function studentResetZoom() {
+    currentZoom = 1.0;
+    applyZoomAndFit(1.0, currentFitMode);
+}
+
+// Double tap on mobile to zoom
+let lastTap = 0;
+document.addEventListener('touchend', (e) => {
+    // Only on slide stage
+    if (!e.target.closest('#stage-wrapper')) return;
+    const currentTime = new Date().getTime();
+    const tapLength = currentTime - lastTap;
+    if (tapLength < 350 && tapLength > 0) {
+        if (currentZoom > 1.1) {
+            studentResetZoom();
+        } else {
+            studentZoom(0.6);
+        }
+    }
+    lastTap = currentTime;
+});
+
+window.addEventListener('orientationchange', () => {
+    setTimeout(() => {
+        applyZoomAndFit();
+        setupCanvasResolution();
+    }, 200);
+});
 
 // ----------------- RENDER SLIDE -----------------
 
