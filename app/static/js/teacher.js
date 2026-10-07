@@ -625,48 +625,78 @@ async function toggleScreenShare() {
 let micStream = null;
 let micRecorder = null;
 let isMicActive = false;
+let isMicToggling = false;
 let audioContext = null;
 let audioAnalyser = null;
 let micAnimFrame = null;
 
+function resetMicBtnUI() {
+    isMicActive = false;
+    const btn = document.getElementById('btn-mic-toggle');
+    const icon = document.getElementById('mic-icon');
+    const text = document.getElementById('mic-text');
+    const pulse = document.getElementById('mic-pulse');
+    if (btn) {
+        btn.className = "px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition border border-slate-700 cursor-pointer";
+    }
+    if (icon) icon.className = "fa-solid fa-microphone-slash text-slate-400";
+    if (text) text.textContent = "Bật Mic";
+    if (pulse) pulse.classList.add('hidden');
+}
+
 async function toggleMicrophone() {
+    if (isMicToggling) return;
+    isMicToggling = true;
+
     const btn = document.getElementById('btn-mic-toggle');
     const icon = document.getElementById('mic-icon');
     const text = document.getElementById('mic-text');
     const pulse = document.getElementById('mic-pulse');
 
-    if (isMicActive) {
-        // Tắt Micro
-        isMicActive = false;
-        if (micRecorder && micRecorder.state !== 'inactive') {
-            micRecorder.stop();
-        }
-        if (micStream) {
-            micStream.getTracks().forEach(t => t.stop());
-            micStream = null;
-        }
-        if (micAnimFrame) {
-            cancelAnimationFrame(micAnimFrame);
-            micAnimFrame = null;
-        }
-        if (audioContext && audioContext.state !== 'closed') {
-            audioContext.close().catch(() => {});
-            audioContext = null;
-        }
+    try {
+        if (isMicActive) {
+            // Tắt Micro
+            isMicActive = false;
+            if (micRecorder && micRecorder.state !== 'inactive') {
+                try { micRecorder.stop(); } catch(e) {}
+            }
+            if (micStream) {
+                micStream.getTracks().forEach(t => t.stop());
+                micStream = null;
+            }
+            if (micAnimFrame) {
+                cancelAnimationFrame(micAnimFrame);
+                micAnimFrame = null;
+            }
+            if (audioContext && audioContext.state !== 'closed') {
+                try { audioContext.close(); } catch(e) {}
+                audioContext = null;
+            }
 
-        if (btn) {
-            btn.className = "px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition border border-slate-700";
-        }
-        if (icon) icon.className = "fa-solid fa-microphone-slash text-slate-400";
-        if (text) text.textContent = "Bật Mic";
-        if (pulse) pulse.classList.add('hidden');
+            resetMicBtnUI();
 
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'MIC_STATUS', active: false }));
-        }
-    } else {
-        // Bật Micro
-        try {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'MIC_STATUS', active: false }));
+            }
+        } else {
+            // Bật Micro: Phản hồi giao diện tức thì để không bị trơ
+            if (icon) icon.className = "fa-solid fa-spinner fa-spin text-amber-400";
+            if (text) text.textContent = "Đang mở mic...";
+
+            // Kiểm tra Secure Context (HTTPS hoặc localhost)
+            const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+            if (location.protocol !== 'https:' && !isLocal) {
+                alert("Không thể bật Micro qua địa chỉ HTTP (" + location.hostname + ") do trình duyệt chặn bảo mật.\n\n👉 Vui lòng sử dụng đường link HTTPS chính thức (ví dụ trên Render Cloud) hoặc truy cập từ máy chủ localhost để được cấp quyền Micro.");
+                resetMicBtnUI();
+                return;
+            }
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("Trình duyệt không hỗ trợ API Micro hoặc tính năng này bị vô hiệu hoá. Vui lòng mở trang trên Google Chrome, Edge hoặc Safari.");
+                resetMicBtnUI();
+                return;
+            }
+
             micStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: true,
@@ -679,7 +709,7 @@ async function toggleMicrophone() {
             isMicActive = true;
 
             if (btn) {
-                btn.className = "px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-lg shadow-emerald-500/25 border border-emerald-400";
+                btn.className = "px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-lg shadow-emerald-500/25 border border-emerald-400 cursor-pointer";
             }
             if (icon) icon.className = "fa-solid fa-microphone text-white";
             if (text) text.textContent = "Đang phát tiếng";
@@ -690,36 +720,50 @@ async function toggleMicrophone() {
                 ws.send(JSON.stringify({ type: 'MIC_STATUS', active: true }));
             }
 
-            // Đo âm lượng giọng nói để tạo hiệu ứng nhấp nháy cho Giáo viên thấy mic đang hoạt động
+            // Đo âm lượng giọng nói để tạo hiệu ứng nhấp nháy
             try {
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
-                audioContext = new AudioCtx();
-                const source = audioContext.createMediaStreamSource(micStream);
-                audioAnalyser = audioContext.createAnalyser();
-                audioAnalyser.fftSize = 256;
-                source.connect(audioAnalyser);
+                if (AudioCtx) {
+                    audioContext = new AudioCtx();
+                    const source = audioContext.createMediaStreamSource(micStream);
+                    audioAnalyser = audioContext.createAnalyser();
+                    audioAnalyser.fftSize = 256;
+                    source.connect(audioAnalyser);
 
-                const dataArray = new Uint8Array(audioAnalyser.frequencyBinCount);
-                const checkVolume = () => {
-                    if (!isMicActive) return;
-                    audioAnalyser.getByteFrequencyData(dataArray);
-                    let sum = 0;
-                    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-                    const avg = sum / dataArray.length;
-                    if (pulse) {
-                        pulse.style.transform = `scale(${1 + Math.min(avg / 25, 2)})`;
-                    }
-                    micAnimFrame = requestAnimationFrame(checkVolume);
-                };
-                checkVolume();
+                    const dataArray = new Uint8Array(audioAnalyser.frequencyBinCount);
+                    const checkVolume = () => {
+                        if (!isMicActive) return;
+                        audioAnalyser.getByteFrequencyData(dataArray);
+                        let sum = 0;
+                        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                        const avg = sum / dataArray.length;
+                        if (pulse) {
+                            pulse.style.transform = `scale(${1 + Math.min(avg / 25, 2)})`;
+                        }
+                        micAnimFrame = requestAnimationFrame(checkVolume);
+                    };
+                    checkVolume();
+                }
             } catch (e) {
                 console.warn("Visualizer audio context:", e);
             }
 
-            // Khởi tạo MediaRecorder với định dạng nén tối ưu
-            let mimeType = 'audio/webm;codecs=opus';
-            if (!MediaRecorder.isTypeSupported(mimeType)) {
-                mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+            // Tìm định dạng âm thanh phù hợp
+            let mimeType = '';
+            const candidateTypes = [
+                'audio/webm;codecs=opus',
+                'audio/webm',
+                'audio/mp4',
+                'audio/aac',
+                'audio/ogg'
+            ];
+            if (typeof MediaRecorder !== 'undefined') {
+                for (const t of candidateTypes) {
+                    if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) {
+                        mimeType = t;
+                        break;
+                    }
+                }
             }
 
             const options = mimeType ? { mimeType, audioBitsPerSecond: 32000 } : {};
@@ -734,7 +778,7 @@ async function toggleMicrophone() {
                             ws.send(JSON.stringify({
                                 type: 'AUDIO_CHUNK',
                                 audio: base64Data,
-                                mime_type: mimeType
+                                mime_type: mimeType || 'audio/webm'
                             }));
                         };
                         reader.readAsDataURL(event.data);
@@ -742,20 +786,30 @@ async function toggleMicrophone() {
                 }
             };
 
-            // Cắt lát âm thanh gửi đều đặn mỗi 180ms
-            micRecorder.start(180);
+            // Cắt lát âm thanh gửi đều đặn mỗi 200ms
+            micRecorder.start(200);
 
-            micStream.getAudioTracks()[0].onended = () => {
-                if (isMicActive) toggleMicrophone();
-            };
-
-        } catch (err) {
-            console.error("Lỗi cấp quyền Micro:", err);
-            alert("Không thể truy cập Micro. Hãy kiểm tra và cấp quyền Micro trên trình duyệt!");
-            isMicActive = false;
+            if (micStream.getAudioTracks().length > 0) {
+                micStream.getAudioTracks()[0].onended = () => {
+                    if (isMicActive) toggleMicrophone();
+                };
+            }
         }
+    } catch (err) {
+        console.error("Lỗi cấp quyền Micro:", err);
+        resetMicBtnUI();
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            alert("Bạn đã chặn quyền truy cập Micro.\n\n👉 Hãy nhấp vào biểu tượng Ổ khoá hoặc Cài đặt trang web trên thanh địa chỉ trình duyệt, chọn 'Cho phép (Allow)' quyền Micro rồi tải lại trang!");
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+            alert("Không tìm thấy Micro trên thiết bị của bạn. Vui lòng kiểm tra lại mic hoặc cắm tai nghe có mic!");
+        } else {
+            alert("Không thể khởi động Micro: " + (err.message || err.name));
+        }
+    } finally {
+        isMicToggling = false;
     }
 }
+window.toggleMicrophone = toggleMicrophone;
 
 // ----------------- SHARE MODAL & QR CODE (DUAL TABS) -----------------
 

@@ -99,7 +99,7 @@
             </button>
 
             <!-- Nút Bật/Tắt Micro Giáo Viên -->
-            <button id="btn-mic-toggle" onclick="toggleMicrophone()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition border border-slate-700" title="Bật/Tắt Micro thu âm giọng nói phát cho học sinh (Phím tắt: M)">
+            <button id="btn-mic-toggle" onclick="toggleMicrophone()" type="button" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition border border-slate-700 cursor-pointer" title="Bật/Tắt Micro thu âm giọng nói phát cho học sinh (Phím tắt: M)">
                 <i id="mic-icon" class="fa-solid fa-microphone-slash text-slate-400"></i>
                 <span id="mic-text" class="hidden sm:inline">Bật Mic</span>
                 <span id="mic-pulse" class="w-2 h-2 rounded-full bg-emerald-400 hidden animate-ping"></span>
@@ -379,6 +379,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/teacher.js?v=7"></script>
+    <script src="/static/js/teacher.js?v=10"></script>
 </body>
 </html>
