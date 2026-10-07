@@ -575,9 +575,27 @@ function openShareModal() {
     const modal = document.getElementById('share-modal');
     modal.classList.remove('hidden');
 
-    const studentUrl = `http://${LAN_IP}:8000/view/${ROOM_ID}`;
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    let studentUrl = '';
+
+    if (!isLocalhost) {
+        // Đang chạy trên Render, Cloud hoặc tên miền Internet
+        studentUrl = `${window.location.origin}/view/${ROOM_ID}`;
+    } else {
+        // Đang chạy trên máy giáo viên (Localhost)
+        studentUrl = `http://${LAN_IP}:8000/view/${ROOM_ID}`;
+    }
+
     document.getElementById('share-url-input').value = studentUrl;
-    document.getElementById('lan-hint-url').textContent = studentUrl;
+
+    const lanNoteText = document.getElementById('lan-note-text');
+    if (lanNoteText) {
+        if (!isLocalhost) {
+            lanNoteText.innerHTML = `Học sinh có thể truy cập qua Internet (WiFi hoặc 4G) từ mọi nơi: <strong class="font-mono text-emerald-800 break-all">${studentUrl}</strong>`;
+        } else {
+            lanNoteText.innerHTML = `Trong phòng tin học hoặc cùng mạng WiFi trường, học sinh truy cập: <strong class="font-mono text-amber-900 break-all">${studentUrl}</strong>`;
+        }
+    }
 
     const qrContainer = document.getElementById('qrcode-container');
     qrContainer.innerHTML = '';

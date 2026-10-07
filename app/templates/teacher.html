@@ -305,10 +305,10 @@
                 <p class="text-[11px] font-semibold text-slate-500">Học sinh có thể dùng Camera điện thoại / iPad quét mã này</p>
             </div>
 
-            <!-- LAN Classroom IP Note -->
-            <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 flex items-start space-x-2">
-                <i class="fa-solid fa-circle-info text-amber-600 text-xs mt-0.5"></i>
-                <span>Trong phòng tin học hoặc cùng mạng WiFi trường, học sinh truy cập: <strong class="font-mono text-amber-900" id="lan-hint-url"></strong></span>
+            <!-- Classroom Network / Internet Note -->
+            <div id="lan-note-box" class="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-700 flex items-start space-x-2">
+                <i class="fa-solid fa-circle-info text-blue-600 text-xs mt-0.5"></i>
+                <span id="lan-note-text">Học sinh truy cập: <strong class="font-mono text-blue-900" id="lan-hint-url"></strong></span>
             </div>
 
             <div class="mt-6 flex justify-end">
@@ -328,6 +328,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/teacher.js?v=3"></script>
+    <script src="/static/js/teacher.js?v=4"></script>
 </body>
 </html>

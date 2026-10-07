@@ -27,12 +27,12 @@
                 </div>
             </div>
 
-            <!-- LAN IP Badge -->
+            <!-- Server URL Badge (Online on Render or LAN) -->
             <div class="flex items-center space-x-3">
                 <div class="hidden md:flex items-center space-x-2 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full text-xs text-emerald-700 font-semibold">
                     <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span>Mạng LAN lớp học:</span>
-                    <span class="font-mono bg-white px-2 py-0.5 rounded border border-emerald-300">http://{{ lan_ip }}:8000</span>
+                    <span id="badge-title">Địa chỉ máy chủ:</span>
+                    <span id="badge-url" class="font-mono bg-white px-2 py-0.5 rounded border border-emerald-300">http://{{ lan_ip }}:8000</span>
                 </div>
                 <button onclick="openQuickRoomModal()" class="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-sm font-semibold shadow-md shadow-blue-500/20 flex items-center space-x-2 transition">
                     <i class="fa-solid fa-play text-xs"></i>
@@ -406,6 +406,16 @@ V. HƯỚNG DẪN VỀ NHÀ
                 loading.classList.add('hidden');
             }
         }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const badgeTitle = document.getElementById('badge-title');
+            const badgeUrl = document.getElementById('badge-url');
+            if (badgeTitle && badgeUrl && !isLocal) {
+                badgeTitle.textContent = "Liên kết trực tuyến:";
+                badgeUrl.textContent = window.location.origin;
+            }
+        });
     </script>
 </body>
 </html>
