@@ -153,7 +153,8 @@ function updateSyncStatus(connected) {
 }
 
 let currentZoom = 1.0;
-let currentFitMode = 'width';
+let currentFitMode = 'contain'; // 'contain' (vừa toàn màn hình, tràn đẹp khi xoay ngang) hoặc 'width' (tràn bề ngang, cuộn dọc)
+let isForceRotated = false;
 
 function applyZoomAndFit(zoom = currentZoom, fitMode = currentFitMode) {
     currentZoom = zoom;
@@ -161,34 +162,91 @@ function applyZoomAndFit(zoom = currentZoom, fitMode = currentFitMode) {
 
     const stage = document.getElementById('stage-wrapper');
     const img = document.getElementById('slide-img');
+    const scrollContainer = document.getElementById('stage-scroll-container');
+    const zoomText = document.getElementById('student-zoom-text');
+    const btnFit = document.getElementById('btn-fit-toggle');
 
-    if (currentFitMode === 'width') {
-        if (stage) {
-            const widthClass = currentZoom >= 2.0 ? 'max-w-7xl' : (currentZoom >= 1.5 ? 'max-w-6xl' : (currentZoom >= 1.25 ? 'max-w-5xl' : 'max-w-4xl'));
-            stage.className = `relative w-full ${widthClass} bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-start border border-slate-800 transition-all duration-150 my-2`;
-        }
-        if (img) {
-            img.style.width = '100%';
-            img.style.maxWidth = '100%';
-            img.style.maxHeight = 'none';
-            img.style.height = 'auto';
-        }
-    } else {
-        if (stage) {
-            stage.className = `relative max-h-[calc(100vh-120px)] w-fit max-w-[95vw] bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-center border border-slate-800 transition-all duration-150 my-auto`;
-        }
-        if (img) {
-            img.style.width = 'auto';
-            img.style.maxWidth = 'calc(100vw - 40px)';
-            img.style.maxHeight = 'calc(100vh - 130px)';
-            img.style.height = 'auto';
+    if (zoomText) zoomText.textContent = `${Math.round(currentZoom * 100)}%`;
+
+    const isLandscape = window.innerWidth > window.innerHeight;
+    const isMobile = window.innerWidth <= 900 || window.innerHeight <= 600;
+
+    if (btnFit) {
+        if (currentFitMode === 'width') {
+            btnFit.className = "w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs";
+            btnFit.title = "Đang: Tràn bề ngang (Bấm để Vừa toàn màn hình)";
+        } else {
+            btnFit.className = "w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-xs";
+            btnFit.title = "Đang: Vừa toàn màn hình (Bấm để Tràn bề ngang)";
         }
     }
 
-    const zoomText = document.getElementById('student-zoom-text');
-    if (zoomText) zoomText.textContent = `${Math.round(currentZoom * 100)}%`;
+    // 1. KHI ĐIỆN THOẠI XOAY NGANG (MOBILE LANDSCAPE)
+    if (isMobile && isLandscape) {
+        if (scrollContainer) {
+            scrollContainer.className = "relative w-full h-full overflow-y-auto overflow-x-hidden flex justify-center items-center custom-scroll p-0 m-0";
+        }
+        
+        if (currentFitMode === 'contain' || currentFitMode === 'page') {
+            // Vừa toàn màn hình trong chế độ xoay ngang: không viền, không mép thừa, tràn sát cạnh
+            if (stage) {
+                stage.className = `relative w-auto h-auto max-w-full max-h-full bg-white text-slate-900 rounded-none shadow-none overflow-hidden flex flex-col items-center justify-center border-0 transition-all duration-150 m-0 p-0`;
+            }
+            if (img) {
+                const headerFooterOffset = document.fullscreenElement ? '0px' : '3.4rem';
+                img.style.width = 'auto';
+                img.style.height = 'auto';
+                img.style.maxWidth = `${Math.round(100 * currentZoom)}vw`;
+                img.style.maxHeight = `calc((100dvh - ${headerFooterOffset}) * ${currentZoom})`;
+                img.style.objectFit = 'contain';
+            }
+        } else {
+            // Chế độ tràn bề ngang khi xoay ngang
+            if (stage) {
+                stage.className = `relative w-full max-w-full bg-white text-slate-900 rounded-none shadow-none overflow-hidden flex flex-col items-center justify-start border-0 transition-all duration-150 m-0 p-0`;
+            }
+            if (img) {
+                img.style.width = `${Math.round(100 * currentZoom)}%`;
+                img.style.maxWidth = 'none';
+                img.style.maxHeight = 'none';
+                img.style.height = 'auto';
+                img.style.objectFit = 'fill';
+            }
+        }
+    }
+    // 2. KHI Ở MÀN HÌNH DỌC (PORTRAIT) HOẶC MÁY TÍNH (DESKTOP)
+    else {
+        if (scrollContainer) {
+            scrollContainer.className = "relative w-full h-full overflow-y-auto overflow-x-hidden flex justify-center items-start custom-scroll p-0 sm:p-2";
+        }
 
-    setTimeout(setupCanvasResolution, 60);
+        if (currentFitMode === 'width') {
+            if (stage) {
+                const widthClass = currentZoom >= 2.0 ? 'max-w-7xl' : (currentZoom >= 1.5 ? 'max-w-6xl' : (currentZoom >= 1.25 ? 'max-w-5xl' : 'max-w-4xl'));
+                stage.className = `relative w-full ${widthClass} bg-white text-slate-900 sm:rounded-2xl rounded-none shadow-2xl overflow-hidden flex flex-col items-center justify-start border-0 sm:border border-slate-800 transition-all duration-150 sm:my-2 my-0`;
+            }
+            if (img) {
+                img.style.width = '100%';
+                img.style.maxWidth = '100%';
+                img.style.maxHeight = 'none';
+                img.style.height = 'auto';
+                img.style.objectFit = 'fill';
+            }
+        } else {
+            if (stage) {
+                stage.className = `relative max-h-[calc(100dvh-5rem)] w-auto max-w-full bg-white text-slate-900 sm:rounded-2xl rounded-none shadow-2xl overflow-hidden flex flex-col items-center justify-center border-0 sm:border border-slate-800 transition-all duration-150 my-auto`;
+            }
+            if (img) {
+                img.style.width = 'auto';
+                img.style.maxWidth = '100vw';
+                img.style.maxHeight = `calc((100dvh - 5.5rem) * ${currentZoom})`;
+                img.style.height = 'auto';
+                img.style.objectFit = 'contain';
+            }
+        }
+    }
+
+    setTimeout(setupCanvasResolution, 80);
 }
 
 function studentZoom(delta) {
@@ -201,10 +259,49 @@ function studentResetZoom() {
     applyZoomAndFit(1.0, currentFitMode);
 }
 
+function toggleStudentFitMode() {
+    currentFitMode = (currentFitMode === 'contain' || currentFitMode === 'page') ? 'width' : 'contain';
+    applyZoomAndFit(currentZoom, currentFitMode);
+}
+
+function toggleRotateOrLandscape() {
+    // Thử khoá xoay ngang tự động bằng Screen Orientation API
+    if (screen.orientation && screen.orientation.lock) {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().then(() => {
+                screen.orientation.lock('landscape').catch(() => {});
+            }).catch(() => {});
+        } else {
+            screen.orientation.lock('landscape').catch(() => {});
+        }
+    }
+
+    // Nếu màn hình đang ở chiều dọc (hoặc điện thoại bị bật Portrait Orientation Lock)
+    const isPortrait = window.innerHeight > window.innerWidth;
+    if (isPortrait || isForceRotated) {
+        isForceRotated = !isForceRotated;
+        const stage = document.getElementById('stage-wrapper');
+        const container = document.getElementById('stage-scroll-container');
+        if (isForceRotated) {
+            stage.classList.add('force-rotated-landscape');
+            if (container) container.classList.add('overflow-hidden');
+        } else {
+            stage.classList.remove('force-rotated-landscape');
+            if (container) container.classList.remove('overflow-hidden');
+        }
+        setTimeout(() => {
+            applyZoomAndFit();
+            setupCanvasResolution();
+        }, 150);
+    } else {
+        // Đã xoay ngang rồi thì đổi chế độ Vừa toàn khung <-> Tràn ngang
+        toggleStudentFitMode();
+    }
+}
+
 // Double tap on mobile to zoom
 let lastTap = 0;
 document.addEventListener('touchend', (e) => {
-    // Only on slide stage
     if (!e.target.closest('#stage-wrapper')) return;
     const currentTime = new Date().getTime();
     const tapLength = currentTime - lastTap;
@@ -212,18 +309,27 @@ document.addEventListener('touchend', (e) => {
         if (currentZoom > 1.1) {
             studentResetZoom();
         } else {
-            studentZoom(0.6);
+            studentZoom(0.5);
         }
     }
     lastTap = currentTime;
 });
 
-window.addEventListener('orientationchange', () => {
+function handleOrientationOrResize() {
+    // Nếu thiết bị đã thực sự xoay ngang vật lý, huỷ chế độ xoay cưỡng bức CSS
+    if (window.innerWidth > window.innerHeight && isForceRotated) {
+        isForceRotated = false;
+        const stage = document.getElementById('stage-wrapper');
+        if (stage) stage.classList.remove('force-rotated-landscape');
+    }
     setTimeout(() => {
         applyZoomAndFit();
         setupCanvasResolution();
-    }, 200);
-});
+    }, 150);
+}
+
+window.addEventListener('orientationchange', handleOrientationOrResize);
+window.addEventListener('resize', handleOrientationOrResize);
 
 // ----------------- RENDER SLIDE -----------------
 

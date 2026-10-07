@@ -34,6 +34,55 @@
             -webkit-overflow-scrolling: touch;
             scroll-behavior: smooth;
         }
+
+        /* Tối ưu khi xoay ngang điện thoại (Mobile Landscape) */
+        @media (orientation: landscape) and (max-height: 550px) {
+            header {
+                height: 30px !important;
+                padding-left: 0.5rem !important;
+                padding-right: 0.5rem !important;
+            }
+            header #room-title-text {
+                font-size: 10px !important;
+                max-width: 180px !important;
+            }
+            footer {
+                height: 24px !important;
+                padding-left: 0.5rem !important;
+                padding-right: 0.5rem !important;
+                font-size: 10px !important;
+            }
+            .landscape-compact-hide {
+                display: none !important;
+            }
+            #floating-tools {
+                bottom: 0.5rem !important;
+                right: 0.5rem !important;
+                transform: scale(0.9);
+                transform-origin: bottom right;
+                opacity: 0.8;
+            }
+            #floating-tools:hover, #floating-tools:active {
+                opacity: 1;
+            }
+        }
+
+        /* Xoay 90 độ cưỡng bức khi điện thoại bật khoá xoay dọc */
+        .force-rotated-landscape {
+            position: fixed !important;
+            top: 50% !important;
+            left: 50% !important;
+            width: 100vh !important;
+            height: 100vw !important;
+            max-width: 100vh !important;
+            max-height: 100vw !important;
+            transform: translate(-50%, -50%) rotate(90deg) !important;
+            z-index: 50 !important;
+            background-color: #020617 !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            margin: 0 !important;
+        }
     </style>
 </head>
 <body class="bg-slate-950 text-white h-[100dvh] flex flex-col overflow-hidden select-none">
@@ -56,6 +105,9 @@
                 <i class="fa-solid fa-cloud-arrow-down"></i>
                 <span class="hidden sm:inline">Đã đồng bộ</span>
             </span>
+            <button onclick="toggleRotateOrLandscape()" class="p-1 sm:p-1.5 text-slate-300 hover:text-white bg-slate-800/80 rounded-lg transition" title="Xoay ngang màn hình / Tràn viền">
+                <i class="fa-solid fa-arrows-rotate text-xs"></i>
+            </button>
             <button onclick="toggleFullScreen()" class="p-1 sm:p-1.5 text-slate-300 hover:text-white bg-slate-800/80 rounded-lg transition" title="Toàn màn hình">
                 <i class="fa-solid fa-expand text-xs"></i>
             </button>
@@ -112,8 +164,15 @@
 
         </div>
 
-        <!-- FLOATING MOBILE TOOL PILL (Cho phép học sinh tự thu phóng và xoay ngang) -->
-        <div class="fixed bottom-12 right-3 z-40 flex items-center bg-slate-900/85 backdrop-blur-md border border-slate-700 rounded-full px-2 py-1 shadow-2xl space-x-1">
+        <!-- FLOATING MOBILE TOOL PILL (Cho phép học sinh tự thu phóng, xoay ngang và đổi chế độ tràn viền) -->
+        <div id="floating-tools" class="fixed bottom-12 right-3 z-40 flex items-center bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-full px-2 py-1 shadow-2xl space-x-1">
+            <button onclick="toggleRotateOrLandscape()" class="w-7 h-7 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center text-xs" title="Xoay ngang màn hình / Tràn viền">
+                <i class="fa-solid fa-arrows-rotate"></i>
+            </button>
+            <button onclick="toggleStudentFitMode()" id="btn-fit-toggle" class="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-xs" title="Chuyển chế độ: Vừa khung hoặc Tràn chiều ngang">
+                <i class="fa-solid fa-arrows-left-right-to-line"></i>
+            </button>
+            <div class="w-px h-3 bg-slate-700 mx-0.5"></div>
             <button onclick="studentZoom(-0.2)" class="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-xs" title="Thu nhỏ">
                 <i class="fa-solid fa-minus"></i>
             </button>
@@ -137,7 +196,7 @@
         <div class="flex items-center space-x-1.5 text-[10px] sm:text-[11px]">
             <i class="fa-solid fa-shield-halved text-emerald-400"></i>
             <span class="hidden sm:inline">Đồng bộ tự động theo thao tác của Thầy/Cô</span>
-            <span class="sm:hidden text-emerald-400 font-semibold">Đồng bộ tự động</span>
+            <span class="sm:hidden text-emerald-400 font-semibold landscape-compact-hide">Đồng bộ tự động</span>
         </div>
     </footer>
 
@@ -149,6 +208,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/student.js?v=5"></script>
+    <script src="/static/js/student.js?v=6"></script>
 </body>
 </html>
