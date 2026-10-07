@@ -621,6 +621,142 @@ async function toggleScreenShare() {
     }
 }
 
+// ----------------- TEACHER MICROPHONE STREAMING (REAL-TIME VOICE BROADCAST) -----------------
+let micStream = null;
+let micRecorder = null;
+let isMicActive = false;
+let audioContext = null;
+let audioAnalyser = null;
+let micAnimFrame = null;
+
+async function toggleMicrophone() {
+    const btn = document.getElementById('btn-mic-toggle');
+    const icon = document.getElementById('mic-icon');
+    const text = document.getElementById('mic-text');
+    const pulse = document.getElementById('mic-pulse');
+
+    if (isMicActive) {
+        // Tắt Micro
+        isMicActive = false;
+        if (micRecorder && micRecorder.state !== 'inactive') {
+            micRecorder.stop();
+        }
+        if (micStream) {
+            micStream.getTracks().forEach(t => t.stop());
+            micStream = null;
+        }
+        if (micAnimFrame) {
+            cancelAnimationFrame(micAnimFrame);
+            micAnimFrame = null;
+        }
+        if (audioContext && audioContext.state !== 'closed') {
+            audioContext.close().catch(() => {});
+            audioContext = null;
+        }
+
+        if (btn) {
+            btn.className = "px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition border border-slate-700";
+        }
+        if (icon) icon.className = "fa-solid fa-microphone-slash text-slate-400";
+        if (text) text.textContent = "Bật Mic";
+        if (pulse) pulse.classList.add('hidden');
+
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'MIC_STATUS', active: false }));
+        }
+    } else {
+        // Bật Micro
+        try {
+            micStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                },
+                video: false
+            });
+
+            isMicActive = true;
+
+            if (btn) {
+                btn.className = "px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-lg shadow-emerald-500/25 border border-emerald-400";
+            }
+            if (icon) icon.className = "fa-solid fa-microphone text-white";
+            if (text) text.textContent = "Đang phát tiếng";
+            if (pulse) pulse.classList.remove('hidden');
+
+            // Báo cho toàn bộ học sinh biết Micro đã bật
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'MIC_STATUS', active: true }));
+            }
+
+            // Đo âm lượng giọng nói để tạo hiệu ứng nhấp nháy cho Giáo viên thấy mic đang hoạt động
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                audioContext = new AudioCtx();
+                const source = audioContext.createMediaStreamSource(micStream);
+                audioAnalyser = audioContext.createAnalyser();
+                audioAnalyser.fftSize = 256;
+                source.connect(audioAnalyser);
+
+                const dataArray = new Uint8Array(audioAnalyser.frequencyBinCount);
+                const checkVolume = () => {
+                    if (!isMicActive) return;
+                    audioAnalyser.getByteFrequencyData(dataArray);
+                    let sum = 0;
+                    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                    const avg = sum / dataArray.length;
+                    if (pulse) {
+                        pulse.style.transform = `scale(${1 + Math.min(avg / 25, 2)})`;
+                    }
+                    micAnimFrame = requestAnimationFrame(checkVolume);
+                };
+                checkVolume();
+            } catch (e) {
+                console.warn("Visualizer audio context:", e);
+            }
+
+            // Khởi tạo MediaRecorder với định dạng nén tối ưu
+            let mimeType = 'audio/webm;codecs=opus';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+            }
+
+            const options = mimeType ? { mimeType, audioBitsPerSecond: 32000 } : {};
+            micRecorder = new MediaRecorder(micStream, options);
+
+            micRecorder.ondataavailable = (event) => {
+                if (event.data && event.data.size > 0 && isMicActive) {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                            const base64Data = reader.result;
+                            ws.send(JSON.stringify({
+                                type: 'AUDIO_CHUNK',
+                                audio: base64Data,
+                                mime_type: mimeType
+                            }));
+                        };
+                        reader.readAsDataURL(event.data);
+                    }
+                }
+            };
+
+            // Cắt lát âm thanh gửi đều đặn mỗi 180ms
+            micRecorder.start(180);
+
+            micStream.getAudioTracks()[0].onended = () => {
+                if (isMicActive) toggleMicrophone();
+            };
+
+        } catch (err) {
+            console.error("Lỗi cấp quyền Micro:", err);
+            alert("Không thể truy cập Micro. Hãy kiểm tra và cấp quyền Micro trên trình duyệt!");
+            isMicActive = false;
+        }
+    }
+}
+
 // ----------------- SHARE MODAL & QR CODE (DUAL TABS) -----------------
 
 let qrcodeObj = null;
@@ -743,6 +879,8 @@ function setupKeyboardNavigation() {
             setTool(currentTool === 'laser' ? 'cursor' : 'laser');
         } else if (e.key === 'p' || e.key === 'P') {
             setTool(currentTool === 'pen' ? 'cursor' : 'pen');
+        } else if (e.key === 'm' || e.key === 'M') {
+            toggleMicrophone();
         }
     });
 }

@@ -101,6 +101,11 @@
         </div>
 
         <div class="flex items-center space-x-2 sm:space-x-3 shrink-0">
+            <!-- Nút bật/tắt âm thanh giọng nói Thầy/Cô -->
+            <button id="btn-student-audio-toggle" onclick="toggleStudentAudioMute()" class="hidden px-2 py-1 bg-emerald-950/80 border border-emerald-500/60 rounded-full text-[10px] text-emerald-300 font-bold items-center space-x-1.5 shrink-0 transition hover:bg-emerald-900/80 cursor-pointer" title="Bật/Tắt âm thanh giọng nói Thầy/Cô">
+                <i id="student-speaker-icon" class="fa-solid fa-volume-high text-emerald-400 animate-pulse"></i>
+                <span id="student-speaker-text" class="hidden sm:inline">Tiếng Thầy/Cô</span>
+            </button>
             <span id="sync-status" class="text-[10px] sm:text-[11px] text-emerald-400 font-semibold flex items-center space-x-1">
                 <i class="fa-solid fa-cloud-arrow-down"></i>
                 <span class="hidden sm:inline">Đã đồng bộ</span>
@@ -113,6 +118,12 @@
             </button>
         </div>
     </header>
+
+    <!-- Floating Audio Prompt for Mobile/Autoplay unlock -->
+    <div id="mobile-unmute-prompt" onclick="unlockStudentAudio()" class="fixed top-12 left-1/2 -translate-x-1/2 z-50 bg-emerald-600/95 text-white px-4 py-2 rounded-2xl shadow-2xl flex items-center space-x-2 border border-emerald-400 backdrop-blur cursor-pointer hidden animate-bounce">
+        <i class="fa-solid fa-volume-high text-white text-sm"></i>
+        <span class="text-xs font-bold">Thầy/Cô đang nói • Chạm để BẬT TIẾNG</span>
+    </div>
 
     <!-- Main Presentation Viewing Stage (Edge-to-edge on mobile) -->
     <main class="flex-1 relative flex flex-col items-center justify-start p-0 sm:p-2 bg-slate-950 overflow-hidden">
@@ -215,6 +226,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/student.js?v=7"></script>
+    <script src="/static/js/student.js?v=8"></script>
 </body>
 </html>

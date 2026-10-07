@@ -48,6 +48,7 @@ class ClassroomSession:
         self.doc_data = None
         self.current_page = 1
         self.mode = "slides"  # "slides" hoặc "screen"
+        self.mic_active = False # Trạng thái bật/tắt micro giáo viên
         self.laser = {"x": -1, "y": -1, "active": False}
         self.drawings = []
         self.teacher_ws = None
@@ -61,6 +62,7 @@ class ClassroomSession:
             "doc_data": self.doc_data,
             "current_page": self.current_page,
             "mode": self.mode,
+            "mic_active": self.mic_active,
             "laser": self.laser,
             "drawings": self.drawings,
             "student_count": len(self.students)
@@ -387,6 +389,23 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
                 await _broadcast_to_students(session, {
                     "type": "SCREEN_FRAME",
                     "frame": data.get("frame")
+                })
+
+            # Truyền giọng nói Micro thời gian thực từ Giáo viên tới Học sinh
+            elif msg_type == "AUDIO_CHUNK":
+                await _broadcast_to_students(session, {
+                    "type": "AUDIO_CHUNK",
+                    "audio": data.get("audio") or data.get("chunk"),
+                    "mime_type": data.get("mime_type", "")
+                })
+
+            # Trạng thái Bật/Tắt Micro của Giáo viên
+            elif msg_type == "MIC_STATUS":
+                active = data.get("active", False)
+                session.mic_active = active
+                await _broadcast_to_students(session, {
+                    "type": "MIC_STATUS",
+                    "active": active
                 })
 
             # 6. Đồng bộ Phóng to Zoom và Cuộn trang PDF (Scroll & Zoom)

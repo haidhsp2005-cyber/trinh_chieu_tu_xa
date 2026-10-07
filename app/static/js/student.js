@@ -27,6 +27,9 @@ function init() {
         if (sessionState.mode) {
             switchDisplayMode(sessionState.mode);
         }
+        if (sessionState.mic_active !== undefined) {
+            updateStudentAudioUI(sessionState.mic_active);
+        }
     }
 
     setupCanvasResolution();
@@ -73,6 +76,9 @@ function connectWebSocket() {
             }
             if (sessionState.mode) {
                 switchDisplayMode(sessionState.mode);
+            }
+            if (sessionState.mic_active !== undefined) {
+                updateStudentAudioUI(sessionState.mic_active);
             }
         }
 
@@ -148,6 +154,20 @@ function connectWebSocket() {
                 if (loading) loading.classList.add('hidden');
                 screenImg.src = msg.frame;
             }
+        }
+
+        // 10. Trạng thái bật/tắt Micro của Thầy/Cô
+        else if (msg.type === 'MIC_STATUS') {
+            sessionState.mic_active = !!msg.active;
+            updateStudentAudioUI(msg.active);
+            if (!msg.active) {
+                audioQueue = [];
+            }
+        }
+
+        // 11. Nhận gói âm thanh giọng nói trực tiếp từ Thầy/Cô
+        else if (msg.type === 'AUDIO_CHUNK') {
+            handleIncomingAudioChunk(msg.audio || msg.chunk, msg.mime_type);
         }
     };
 
@@ -440,6 +460,144 @@ function toggleFullScreen() {
     } else {
         document.exitFullscreen().catch(() => {});
     }
+}
+
+// ----------------- REAL-TIME AUDIO BROADCAST RECEIVER -----------------
+let audioQueue = [];
+let isAudioPlaying = false;
+let isStudentMuted = false;
+let audioUnlocked = false;
+let audioContext = null;
+
+function unlockStudentAudio() {
+    audioUnlocked = true;
+    const prompt = document.getElementById('mobile-unmute-prompt');
+    if (prompt) prompt.classList.add('hidden');
+
+    // Mở khoá Web Audio pipeline trên iOS Safari & Android Chrome
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+            if (!audioContext) audioContext = new AudioCtx();
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+        }
+    } catch (e) {
+        console.warn("AudioContext resume error:", e);
+    }
+
+    // Phát âm thanh im lặng để kích hoạt kênh audio của iOS Safari
+    try {
+        const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
+        silentAudio.play().catch(() => {});
+    } catch (e) {}
+
+    updateStudentAudioUI();
+    processAudioQueue();
+}
+
+// Tự động mở khoá Audio ngay khi học sinh chạm hoặc nhấp bất cứ đâu trên trang
+document.addEventListener('click', () => {
+    if (!audioUnlocked) unlockStudentAudio();
+}, { passive: true });
+document.addEventListener('touchstart', () => {
+    if (!audioUnlocked) unlockStudentAudio();
+}, { passive: true });
+
+function toggleStudentAudioMute() {
+    if (!audioUnlocked) {
+        unlockStudentAudio();
+        return;
+    }
+    isStudentMuted = !isStudentMuted;
+    if (isStudentMuted) {
+        audioQueue = []; // Xoá hàng đợi âm thanh khi tắt tiếng
+    }
+    updateStudentAudioUI();
+}
+
+function updateStudentAudioUI(micActive = null) {
+    const btn = document.getElementById('btn-student-audio-toggle');
+    const icon = document.getElementById('student-speaker-icon');
+    const text = document.getElementById('student-speaker-text');
+    if (!btn) return;
+
+    const isTeacherSpeaking = micActive !== null ? micActive : (sessionState && sessionState.mic_active);
+
+    if (!isTeacherSpeaking) {
+        btn.classList.add('hidden');
+        btn.classList.remove('flex');
+        const prompt = document.getElementById('mobile-unmute-prompt');
+        if (prompt) prompt.classList.add('hidden');
+        return;
+    }
+
+    btn.classList.remove('hidden');
+    btn.classList.add('flex');
+    if (isStudentMuted) {
+        btn.className = "flex px-2 py-1 bg-rose-950/80 border border-rose-500/60 rounded-full text-[10px] text-rose-300 font-bold items-center space-x-1.5 shrink-0 transition hover:bg-rose-900/80 cursor-pointer";
+        if (icon) icon.className = "fa-solid fa-volume-xmark text-rose-400";
+        if (text) text.textContent = "Đã tắt tiếng";
+    } else {
+        btn.className = "flex px-2 py-1 bg-emerald-950/80 border border-emerald-500/60 rounded-full text-[10px] text-emerald-300 font-bold items-center space-x-1.5 shrink-0 transition hover:bg-emerald-900/80 cursor-pointer";
+        if (icon) icon.className = "fa-solid fa-volume-high text-emerald-400 animate-pulse";
+        if (text) text.textContent = "Tiếng Thầy/Cô";
+    }
+}
+
+function handleIncomingAudioChunk(chunkBase64, mimeType = 'audio/webm') {
+    if (isStudentMuted || !chunkBase64) return;
+
+    if (!audioUnlocked) {
+        const prompt = document.getElementById('mobile-unmute-prompt');
+        if (prompt) prompt.classList.remove('hidden');
+    }
+
+    // Giữ hàng đợi tối đa 3 gói (~540ms) để loại bỏ độ trễ tích lũy
+    if (audioQueue.length > 3) {
+        audioQueue.shift();
+    }
+
+    const dataUri = chunkBase64.startsWith('data:') ? chunkBase64 : `data:${mimeType};base64,${chunkBase64}`;
+    audioQueue.push(dataUri);
+
+    if (!isAudioPlaying && audioUnlocked) {
+        processAudioQueue();
+    }
+}
+
+function processAudioQueue() {
+    if (isAudioPlaying || isStudentMuted || audioQueue.length === 0) return;
+    if (!audioUnlocked) return;
+
+    const currentSrc = audioQueue.shift();
+    isAudioPlaying = true;
+
+    const audio = new Audio();
+    audio.src = currentSrc;
+    audio.volume = 1.0;
+
+    const playNext = () => {
+        isAudioPlaying = false;
+        audio.removeEventListener('ended', playNext);
+        audio.removeEventListener('error', playNext);
+        processAudioQueue();
+    };
+
+    audio.addEventListener('ended', playNext);
+    audio.addEventListener('error', (err) => {
+        console.warn("Audio chunk play error:", err);
+        playNext();
+    });
+
+    audio.play().catch(err => {
+        console.warn("Autoplay blocked:", err);
+        audioUnlocked = false;
+        isAudioPlaying = false;
+        const prompt = document.getElementById('mobile-unmute-prompt');
+        if (prompt) prompt.classList.remove('hidden');
+    });
 }
 
 if (document.readyState === 'loading') {

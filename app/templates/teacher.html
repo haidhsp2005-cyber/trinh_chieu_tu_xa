@@ -98,6 +98,13 @@
                 <span>Chia sẻ bài giảng</span>
             </button>
 
+            <!-- Nút Bật/Tắt Micro Giáo Viên -->
+            <button id="btn-mic-toggle" onclick="toggleMicrophone()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition border border-slate-700" title="Bật/Tắt Micro thu âm giọng nói phát cho học sinh (Phím tắt: M)">
+                <i id="mic-icon" class="fa-solid fa-microphone-slash text-slate-400"></i>
+                <span id="mic-text" class="hidden sm:inline">Bật Mic</span>
+                <span id="mic-pulse" class="w-2 h-2 rounded-full bg-emerald-400 hidden animate-ping"></span>
+            </button>
+
             <!-- Nút Chia sẻ Màn hình (WebRTC) -->
             <button id="btn-screen-share" onclick="toggleScreenShare()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition">
                 <i class="fa-solid fa-display text-blue-400"></i>
