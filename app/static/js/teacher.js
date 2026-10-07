@@ -679,6 +679,10 @@ function toggleFullScreen() {
 
 function setupKeyboardNavigation() {
     window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeShareModal();
+            return;
+        }
         if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
             nextPage();
         } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {

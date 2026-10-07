@@ -272,18 +272,25 @@
     </footer>
 
     <!-- MODAL CHIA SẺ BÀI GIẢNG (DUAL INTERNET & LAN SHARE MODAL) -->
-    <div id="share-modal" class="fixed inset-0 bg-slate-950/75 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white text-slate-900 rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-100 relative">
-            <button onclick="closeShareModal()" class="absolute right-6 top-6 text-slate-400 hover:text-slate-600 transition">
-                <i class="fa-solid fa-xmark text-xl"></i>
-            </button>
-
-            <div class="text-center mb-5">
-                <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl mx-auto mb-2 shadow-inner">
-                    <i class="fa-solid fa-tower-broadcast"></i>
+    <div id="share-modal" onclick="if(event.target === this) closeShareModal()" class="fixed inset-0 bg-slate-950/75 backdrop-blur-md z-50 hidden flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-white text-slate-900 rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 relative max-h-[92vh] flex flex-col overflow-y-auto">
+            
+            <!-- STICKY TOP HEADER VỚI NÚT ĐÓNG NỔI BẬT Ở TRÊN -->
+            <div class="sticky -top-5 sm:-top-6 bg-white/95 backdrop-blur-md pt-1 pb-3 mb-3 border-b border-slate-100 flex items-center justify-between z-10 shrink-0">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-base shadow-inner shrink-0">
+                        <i class="fa-solid fa-tower-broadcast"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base sm:text-lg font-extrabold text-slate-900 leading-tight">Chia sẻ bài giảng</h3>
+                        <p class="text-[11px] text-slate-400">Xem trực tiếp trên điện thoại / máy tính</p>
+                    </div>
                 </div>
-                <h3 class="text-xl font-extrabold text-slate-900">Chia sẻ bài giảng trực tiếp</h3>
-                <p class="text-xs text-slate-500">Học sinh xem bài giảng thời gian thực trên điện thoại hoặc máy tính</p>
+                <!-- NÚT ĐÓNG Ở TRÊN CÙNG: RÕ RÀNG, DỄ BẤM TRÊN MỌI THIẾT BỊ -->
+                <button onclick="closeShareModal()" class="px-3.5 py-1.5 sm:px-4 sm:py-2 bg-rose-500 hover:bg-rose-600 active:scale-95 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-1.5 shadow-md shadow-rose-500/25 transition shrink-0" title="Đóng hộp thoại chia sẻ">
+                    <i class="fa-solid fa-xmark text-sm sm:text-base"></i>
+                    <span>ĐÓNG</span>
+                </button>
             </div>
 
             <!-- TAB CHUYỂN ĐỔI: LINK INTERNET vs LINK LAN -->
@@ -326,9 +333,11 @@
                 <span id="lan-note-text">Học sinh ở bất kỳ đâu chỉ cần có mạng Internet (WiFi hoặc 4G/5G) đều có thể truy cập link trên mà không cần chung mạng LAN.</span>
             </div>
 
-            <div class="mt-5 flex justify-end">
-                <button onclick="closeShareModal()" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition">
-                    Đóng và tiếp tục giảng dạy
+            <!-- Nút đóng phụ ở dưới -->
+            <div class="mt-4 flex justify-end">
+                <button onclick="closeShareModal()" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5">
+                    <i class="fa-solid fa-xmark"></i>
+                    <span>Đóng hộp thoại</span>
                 </button>
             </div>
         </div>
@@ -343,6 +352,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/teacher.js?v=5"></script>
+    <script src="/static/js/teacher.js?v=6"></script>
 </body>
 </html>
