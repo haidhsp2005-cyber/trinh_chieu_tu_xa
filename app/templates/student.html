@@ -152,8 +152,15 @@
                     </div>
                 </div>
 
-                <!-- 2. SCREEN SHARE LIVE VIDEO (WebRTC) -->
-                <video id="screen-video" autoplay playsinline class="w-full h-full object-contain bg-black hidden z-10"></video>
+                <!-- 2. SCREEN SHARE LIVE STREAM (Phát trực tiếp từ máy tính Thầy/Cô) -->
+                <div id="screen-share-container" class="w-full h-full relative hidden flex flex-col items-center justify-center bg-black min-h-[250px]">
+                    <img id="screen-frame-img" src="" alt="Màn hình Thầy/Cô" class="w-full h-auto max-h-[100dvh] object-contain block">
+                    <div id="screen-share-loading" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 text-white p-4">
+                        <i class="fa-solid fa-display fa-bounce text-4xl text-blue-400 mb-3"></i>
+                        <h4 class="text-sm font-bold">Thầy/Cô đang chia sẻ màn hình...</h4>
+                        <p class="text-xs text-slate-400 mt-1">Hình ảnh sẽ xuất hiện tức thì.</p>
+                    </div>
+                </div>
 
                 <!-- 3. DRAWING OVERLAY CANVAS -->
                 <canvas id="paint-canvas" class="canvas-overlay"></canvas>
@@ -208,6 +215,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/student.js?v=6"></script>
+    <script src="/static/js/student.js?v=7"></script>
 </body>
 </html>

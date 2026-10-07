@@ -521,22 +521,36 @@ function clearCanvas() {
     }
 }
 
-// ----------------- SCREEN SHARING (WEBRTC) -----------------
+// ----------------- SCREEN SHARING & LIVE BROADCAST -----------------
+
+let screenCaptureInterval = null;
+let offscreenCaptureCanvas = null;
+let offscreenCaptureCtx = null;
 
 async function toggleScreenShare() {
     const video = document.getElementById('screen-video');
     const slideCont = document.getElementById('slide-container');
     const btn = document.getElementById('btn-screen-share');
     const btnText = document.getElementById('screen-share-text');
+    const banner = document.getElementById('screen-share-banner');
+    const bannerUrl = document.getElementById('banner-share-url');
 
     if (localScreenStream) {
+        if (screenCaptureInterval) {
+            clearInterval(screenCaptureInterval);
+            screenCaptureInterval = null;
+        }
         localScreenStream.getTracks().forEach(t => t.stop());
         localScreenStream = null;
+        video.srcObject = null;
         video.classList.add('hidden');
         slideCont.classList.remove('hidden');
-        btn.classList.remove('bg-rose-600', 'hover:bg-rose-700', 'text-white');
-        btn.classList.add('bg-slate-800', 'text-slate-200');
-        btnText.textContent = "Chia sẻ màn hình";
+        if (btn) {
+            btn.classList.remove('bg-rose-600', 'hover:bg-rose-700', 'text-white');
+            btn.classList.add('bg-slate-800', 'text-slate-200');
+        }
+        if (btnText) btnText.textContent = "Chia sẻ màn hình";
+        if (banner) banner.classList.add('hidden');
 
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'SWITCH_MODE', mode: 'slides' }));
@@ -544,7 +558,7 @@ async function toggleScreenShare() {
     } else {
         try {
             localScreenStream = await navigator.mediaDevices.getDisplayMedia({
-                video: { frameRate: { ideal: 30, max: 60 } },
+                video: { frameRate: { ideal: 15, max: 30 } },
                 audio: false
             });
 
@@ -552,13 +566,51 @@ async function toggleScreenShare() {
             video.classList.remove('hidden');
             slideCont.classList.add('hidden');
 
-            btn.classList.remove('bg-slate-800', 'text-slate-200');
-            btn.classList.add('bg-rose-600', 'hover:bg-rose-700', 'text-white');
-            btnText.textContent = "Dừng chia sẻ";
+            if (btn) {
+                btn.classList.remove('bg-slate-800', 'text-slate-200');
+                btn.classList.add('bg-rose-600', 'hover:bg-rose-700', 'text-white');
+            }
+            if (btnText) btnText.textContent = "Dừng chia sẻ";
+
+            // Hiển thị thanh nổi kèm link học sinh
+            const studentUrl = window.location.origin.includes('localhost')
+                ? `http://${LAN_IP}:8000/view/${ROOM_ID}`
+                : `${window.location.origin}/view/${ROOM_ID}`;
+            if (bannerUrl) bannerUrl.textContent = studentUrl;
+            if (banner) banner.classList.remove('hidden');
 
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'SWITCH_MODE', mode: 'screen' }));
             }
+
+            // Khởi tạo offscreen canvas để truyền khung hình trực tiếp tới học sinh
+            if (!offscreenCaptureCanvas) {
+                offscreenCaptureCanvas = document.createElement('canvas');
+                offscreenCaptureCtx = offscreenCaptureCanvas.getContext('2d');
+            }
+
+            // Gửi khung hình định kỳ (mỗi 140ms ~ 7 FPS, chất lượng nén JPEG mượt mà)
+            screenCaptureInterval = setInterval(() => {
+                if (!localScreenStream || !video.videoWidth || !video.videoHeight) return;
+                if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+                const maxDim = 1280;
+                let w = video.videoWidth;
+                let h = video.videoHeight;
+                if (w > maxDim) {
+                    h = Math.round((h * maxDim) / w);
+                    w = maxDim;
+                }
+                offscreenCaptureCanvas.width = w;
+                offscreenCaptureCanvas.height = h;
+                offscreenCaptureCtx.drawImage(video, 0, 0, w, h);
+
+                const frameData = offscreenCaptureCanvas.toDataURL('image/jpeg', 0.55);
+                ws.send(JSON.stringify({
+                    type: 'SCREEN_FRAME',
+                    frame: frameData
+                }));
+            }, 140);
 
             localScreenStream.getVideoTracks()[0].onended = () => {
                 toggleScreenShare();

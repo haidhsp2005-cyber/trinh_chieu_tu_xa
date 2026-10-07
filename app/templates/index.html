@@ -8,6 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
     </style>
@@ -126,8 +127,29 @@
                         </div>
                     </div>
 
-                    <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
-                        <a href="/teacher/room_{{ item.id }}?material_id={{ item.id }}" class="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold shadow flex items-center space-x-1.5 transition">
+                    <!-- KHUNG LINK CỐ ĐỊNH DUY NHẤT CHO BÀI GIẢNG NÀY (DẠY MỌI LỚP) -->
+                    <div class="my-3 p-3 bg-blue-50/70 border border-blue-200/80 rounded-2xl">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="text-[11px] font-bold text-blue-900 flex items-center space-x-1.5">
+                                <i class="fa-solid fa-link text-blue-600"></i>
+                                <span>Link học sinh cố định:</span>
+                            </span>
+                            <span class="text-[9px] font-bold px-2 py-0.2 bg-emerald-100 text-emerald-700 rounded-full">Dạy mọi lớp</span>
+                        </div>
+                        <div class="flex items-center space-x-1.5">
+                            <input type="text" readonly data-material-id="{{ item.id }}" class="material-share-input flex-1 bg-white border border-blue-200 rounded-xl px-2.5 py-1.5 text-xs font-mono text-slate-700 select-all focus:outline-none truncate">
+                            <button type="button" onclick="copyMaterialLink(this, '{{ item.id }}')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center space-x-1 shrink-0" title="Sao chép link gửi cho cả lớp">
+                                <i class="fa-solid fa-copy"></i>
+                                <span>Chép</span>
+                            </button>
+                            <button type="button" onclick="showMaterialQR('{{ item.id }}', '{{ item.title }}')" class="p-1.5 px-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition shrink-0" title="Hiện mã QR để chiếu cho học sinh quét">
+                                <i class="fa-solid fa-qrcode text-blue-600"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+                        <a href="/teacher/room_{{ item.id }}" class="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow flex items-center space-x-1.5 transition">
                             <i class="fa-solid fa-desktop"></i>
                             <span>Bắt đầu trình chiếu</span>
                         </a>
@@ -280,6 +302,31 @@
         </div>
     </div>
 
+    <!-- MODAL HIỂN THỊ MÃ QR CỐ ĐỊNH CỦA BÀI GIẢNG -->
+    <div id="quick-qr-modal" onclick="if(event.target === this) closeQuickQRModal()" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 text-center relative">
+            <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+                <h3 class="text-sm font-extrabold text-slate-900 flex items-center space-x-1.5">
+                    <i class="fa-solid fa-qrcode text-blue-600"></i>
+                    <span>Mã QR Bài Giảng Cố Định</span>
+                </h3>
+                <button onclick="closeQuickQRModal()" class="text-slate-400 hover:text-slate-600 text-sm">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <p id="qr-modal-title" class="text-xs font-bold text-slate-700 line-clamp-2 mb-3">Tên bài giảng</p>
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex justify-center mb-3">
+                <div id="modal-qrcode-container" class="bg-white p-3 rounded-xl shadow-sm border border-slate-200"></div>
+            </div>
+            <p class="text-[11px] text-slate-500 mb-3">Học sinh dùng Camera điện thoại quét mã này để vào xem bài giảng tức thì (Dùng cố định cho mọi lớp)</p>
+            <input type="text" id="modal-qr-link-input" readonly class="w-full text-center bg-slate-100 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-mono text-slate-700 select-all mb-3 focus:outline-none">
+            <button onclick="copyModalQRLink()" class="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-md shadow-blue-500/20">
+                <i class="fa-solid fa-copy"></i>
+                <span>Sao chép link này</span>
+            </button>
+        </div>
+    </div>
+
     <script>
         function switchTab(tabId) {
             document.getElementById('tab-materials').classList.add('hidden');
@@ -407,6 +454,53 @@ V. HƯỚNG DẪN VỀ NHÀ
             }
         }
 
+        let modalQrObj = null;
+
+        function copyMaterialLink(btn, materialId) {
+            const url = `${window.location.origin}/view/${materialId}`;
+            navigator.clipboard.writeText(url).then(() => {
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = `<i class="fa-solid fa-check mr-1 text-emerald-300"></i>Đã chép!`;
+                btn.classList.add('bg-emerald-600');
+                setTimeout(() => {
+                    btn.innerHTML = originalHtml;
+                    btn.classList.remove('bg-emerald-600');
+                }, 2000);
+            }).catch(() => {
+                prompt("Copy link học sinh bài giảng:", url);
+            });
+        }
+
+        function showMaterialQR(materialId, title) {
+            const url = `${window.location.origin}/view/${materialId}`;
+            document.getElementById('qr-modal-title').textContent = title || "Bài giảng trực tuyến";
+            document.getElementById('modal-qr-link-input').value = url;
+            
+            const qrCont = document.getElementById('modal-qrcode-container');
+            qrCont.innerHTML = '';
+            modalQrObj = new QRCode(qrCont, {
+                text: url,
+                width: 170,
+                height: 170,
+                colorDark: "#0f172a",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.M
+            });
+
+            document.getElementById('quick-qr-modal').classList.remove('hidden');
+        }
+
+        function closeQuickQRModal() {
+            document.getElementById('quick-qr-modal').classList.add('hidden');
+        }
+
+        function copyModalQRLink() {
+            const input = document.getElementById('modal-qr-link-input');
+            navigator.clipboard.writeText(input.value).then(() => {
+                alert("Đã sao chép link bài giảng cố định vào bộ nhớ tạm!");
+            });
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
             const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
             const badgeTitle = document.getElementById('badge-title');
@@ -415,6 +509,14 @@ V. HƯỚNG DẪN VỀ NHÀ
                 badgeTitle.textContent = "Liên kết trực tuyến:";
                 badgeUrl.textContent = window.location.origin;
             }
+
+            // Điền link đầy đủ vào các ô input link học sinh cố định
+            document.querySelectorAll('.material-share-input').forEach(input => {
+                const matId = input.dataset.materialId;
+                if (matId) {
+                    input.value = `${window.location.origin}/view/${matId}`;
+                }
+            });
         });
     </script>
 </body>

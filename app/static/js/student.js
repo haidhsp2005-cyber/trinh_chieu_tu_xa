@@ -132,6 +132,23 @@ function connectWebSocket() {
                 }
             }
         }
+
+        // 9. Nhận khung hình chia sẻ màn hình trực tiếp từ Giáo viên
+        else if (msg.type === 'SCREEN_FRAME') {
+            const screenCont = document.getElementById('screen-share-container');
+            const slideCont = document.getElementById('slide-container');
+            const screenImg = document.getElementById('screen-frame-img');
+            const loading = document.getElementById('screen-share-loading');
+
+            if (screenCont && slideCont && screenImg) {
+                if (screenCont.classList.contains('hidden')) {
+                    screenCont.classList.remove('hidden');
+                    slideCont.classList.add('hidden');
+                }
+                if (loading) loading.classList.add('hidden');
+                screenImg.src = msg.frame;
+            }
+        }
     };
 
     ws.onclose = () => {
@@ -246,6 +263,14 @@ function applyZoomAndFit(zoom = currentZoom, fitMode = currentFitMode) {
         }
     }
 
+    if (stage) {
+        if (isForceRotated) {
+            stage.classList.add('force-rotated-landscape');
+        } else {
+            stage.classList.remove('force-rotated-landscape');
+        }
+    }
+
     setTimeout(setupCanvasResolution, 80);
 }
 
@@ -265,23 +290,12 @@ function toggleStudentFitMode() {
 }
 
 function toggleRotateOrLandscape() {
-    // Thử khoá xoay ngang tự động bằng Screen Orientation API
-    if (screen.orientation && screen.orientation.lock) {
-        if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen().then(() => {
-                screen.orientation.lock('landscape').catch(() => {});
-            }).catch(() => {});
-        } else {
-            screen.orientation.lock('landscape').catch(() => {});
-        }
-    }
+    // Đảo trạng thái xoay ngang cưỡng bức
+    isForceRotated = !isForceRotated;
+    const stage = document.getElementById('stage-wrapper');
+    const container = document.getElementById('stage-scroll-container');
 
-    // Nếu màn hình đang ở chiều dọc (hoặc điện thoại bị bật Portrait Orientation Lock)
-    const isPortrait = window.innerHeight > window.innerWidth;
-    if (isPortrait || isForceRotated) {
-        isForceRotated = !isForceRotated;
-        const stage = document.getElementById('stage-wrapper');
-        const container = document.getElementById('stage-scroll-container');
+    if (stage) {
         if (isForceRotated) {
             stage.classList.add('force-rotated-landscape');
             if (container) container.classList.add('overflow-hidden');
@@ -289,14 +303,9 @@ function toggleRotateOrLandscape() {
             stage.classList.remove('force-rotated-landscape');
             if (container) container.classList.remove('overflow-hidden');
         }
-        setTimeout(() => {
-            applyZoomAndFit();
-            setupCanvasResolution();
-        }, 150);
-    } else {
-        // Đã xoay ngang rồi thì đổi chế độ Vừa toàn khung <-> Tràn ngang
-        toggleStudentFitMode();
     }
+    applyZoomAndFit(currentZoom, currentFitMode);
+    setupCanvasResolution();
 }
 
 // Double tap on mobile to zoom
@@ -316,16 +325,16 @@ document.addEventListener('touchend', (e) => {
 });
 
 function handleOrientationOrResize() {
-    // Nếu thiết bị đã thực sự xoay ngang vật lý, huỷ chế độ xoay cưỡng bức CSS
+    // Nếu người dùng thực sự xoay ngang điện thoại vật lý, tắt xoay cưỡng bức vì layout đã tự tràn ngang
     if (window.innerWidth > window.innerHeight && isForceRotated) {
         isForceRotated = false;
         const stage = document.getElementById('stage-wrapper');
         if (stage) stage.classList.remove('force-rotated-landscape');
+        const container = document.getElementById('stage-scroll-container');
+        if (container) container.classList.remove('overflow-hidden');
     }
-    setTimeout(() => {
-        applyZoomAndFit();
-        setupCanvasResolution();
-    }, 150);
+    applyZoomAndFit(currentZoom, currentFitMode);
+    setupCanvasResolution();
 }
 
 window.addEventListener('orientationchange', handleOrientationOrResize);
@@ -385,15 +394,18 @@ function renderPage(pageNum) {
 }
 
 function switchDisplayMode(mode) {
-    const video = document.getElementById('screen-video');
+    const screenCont = document.getElementById('screen-share-container');
     const slideCont = document.getElementById('slide-container');
+    const loading = document.getElementById('screen-share-loading');
 
     if (mode === 'screen') {
-        video.classList.remove('hidden');
-        slideCont.classList.add('hidden');
+        if (screenCont) screenCont.classList.remove('hidden');
+        if (slideCont) slideCont.classList.add('hidden');
+        if (loading) loading.classList.remove('hidden');
     } else {
-        video.classList.add('hidden');
-        slideCont.classList.remove('hidden');
+        if (screenCont) screenCont.classList.add('hidden');
+        if (slideCont) slideCont.classList.remove('hidden');
+        if (loading) loading.classList.add('hidden');
     }
 }
 

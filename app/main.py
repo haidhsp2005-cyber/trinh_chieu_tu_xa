@@ -84,6 +84,12 @@ async def index_page(request: Request):
     )
 
 def ensure_session_loaded(room_id: str, material_id: str = None) -> ClassroomSession:
+    # Chuẩn hóa room_id nếu truyền trực tiếp bằng material_id
+    mat_direct = get_material(room_id)
+    if mat_direct:
+        room_id = f"room_{mat_direct['id']}"
+        material_id = mat_direct['id']
+
     if room_id not in active_rooms:
         active_rooms[room_id] = ClassroomSession(room_id)
     session = active_rooms[room_id]
@@ -91,10 +97,11 @@ def ensure_session_loaded(room_id: str, material_id: str = None) -> ClassroomSes
     if not material_id and session.material_id:
         material_id = session.material_id
 
-    if not material_id and room_id.startswith("room_"):
-        candidate_id = room_id.replace("room_", "")
-        if get_material(candidate_id):
-            material_id = candidate_id
+    if not material_id:
+        if room_id.startswith("room_"):
+            candidate_id = room_id.replace("room_", "")
+            if get_material(candidate_id):
+                material_id = candidate_id
 
     all_materials = list_materials()
     if not material_id and all_materials:
@@ -118,15 +125,23 @@ def ensure_session_loaded(room_id: str, material_id: str = None) -> ClassroomSes
 
 @app.get("/teacher/{room_id}", response_class=HTMLResponse)
 async def teacher_view(request: Request, room_id: str, material_id: str = None):
+    # Mỗi bài giảng có một link phòng cố định duy nhất (dạy cho mọi lớp)
+    mat = get_material(room_id)
+    if mat:
+        actual_room_id = f"room_{mat['id']}"
+        material_id = mat['id']
+    else:
+        actual_room_id = room_id
+
     lan_ip = get_lan_ip()
-    session = ensure_session_loaded(room_id, material_id)
+    session = ensure_session_loaded(actual_room_id, material_id)
     all_materials = list_materials()
 
     return templates.TemplateResponse(
         request=request,
         name="teacher.html",
         context={
-            "room_id": room_id,
+            "room_id": actual_room_id,
             "lan_ip": lan_ip,
             "session": session.to_state_dict(),
             "all_materials": all_materials
@@ -135,14 +150,23 @@ async def teacher_view(request: Request, room_id: str, material_id: str = None):
 
 @app.get("/view/{room_id}", response_class=HTMLResponse)
 async def student_view(request: Request, room_id: str):
+    # Link cố định duy nhất cho học sinh của bài giảng này
+    mat = get_material(room_id)
+    if mat:
+        actual_room_id = f"room_{mat['id']}"
+        material_id = mat['id']
+    else:
+        actual_room_id = room_id
+        material_id = None
+
     lan_ip = get_lan_ip()
-    session = ensure_session_loaded(room_id)
+    session = ensure_session_loaded(actual_room_id, material_id)
 
     return templates.TemplateResponse(
         request=request,
         name="student.html",
         context={
-            "room_id": room_id,
+            "room_id": actual_room_id,
             "lan_ip": lan_ip,
             "session": session.to_state_dict(),
             "room_title": session.title
@@ -356,6 +380,13 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
                 await _broadcast_to_students(session, {
                     "type": "SWITCH_MODE",
                     "mode": new_mode
+                })
+
+            # Truyền hình ảnh chia sẻ màn hình trực tiếp từ Giáo viên tới Học sinh
+            elif msg_type == "SCREEN_FRAME":
+                await _broadcast_to_students(session, {
+                    "type": "SCREEN_FRAME",
+                    "frame": data.get("frame")
                 })
 
             # 6. Đồng bộ Phóng to Zoom và Cuộn trang PDF (Scroll & Zoom)
