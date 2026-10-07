@@ -161,13 +161,13 @@ function connectWebSocket() {
             sessionState.mic_active = !!msg.active;
             updateStudentAudioUI(msg.active);
             if (!msg.active) {
-                audioQueue = [];
+                nextAudioPlayTime = 0;
             }
         }
 
         // 11. Nhận gói âm thanh giọng nói trực tiếp từ Thầy/Cô
         else if (msg.type === 'AUDIO_CHUNK') {
-            handleIncomingAudioChunk(msg.audio || msg.chunk, msg.mime_type);
+            handleIncomingAudioChunk(msg);
         }
     };
 
@@ -462,39 +462,39 @@ function toggleFullScreen() {
     }
 }
 
-// ----------------- REAL-TIME AUDIO BROADCAST RECEIVER -----------------
-let audioQueue = [];
-let isAudioPlaying = false;
+// ----------------- REAL-TIME AUDIO BROADCAST RECEIVER (PCM WEB AUDIO) -----------------
+let studentAudioCtx = null;
 let isStudentMuted = false;
 let audioUnlocked = false;
-let audioContext = null;
+let nextAudioPlayTime = 0;
+
+function initOrResumeStudentAudioContext() {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+            if (!studentAudioCtx) {
+                studentAudioCtx = new AudioCtx();
+            }
+            if (studentAudioCtx.state === 'suspended') {
+                studentAudioCtx.resume().catch(() => {});
+            }
+        }
+    } catch (e) {
+        console.warn("AudioContext init error:", e);
+    }
+}
 
 function unlockStudentAudio() {
     audioUnlocked = true;
     const prompt = document.getElementById('mobile-unmute-prompt');
-    if (prompt) prompt.classList.add('hidden');
-
-    // Mở khoá Web Audio pipeline trên iOS Safari & Android Chrome
-    try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (AudioCtx) {
-            if (!audioContext) audioContext = new AudioCtx();
-            if (audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
-        }
-    } catch (e) {
-        console.warn("AudioContext resume error:", e);
+    if (prompt) {
+        prompt.classList.add('hidden');
+        prompt.style.display = 'none';
     }
 
-    // Phát âm thanh im lặng để kích hoạt kênh audio của iOS Safari
-    try {
-        const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
-        silentAudio.play().catch(() => {});
-    } catch (e) {}
-
+    initOrResumeStudentAudioContext();
     updateStudentAudioUI();
-    processAudioQueue();
+    console.log("Audio pipeline successfully unlocked on student device!");
 }
 
 // Tự động mở khoá Audio ngay khi học sinh chạm hoặc nhấp bất cứ đâu trên trang
@@ -512,7 +512,7 @@ function toggleStudentAudioMute() {
     }
     isStudentMuted = !isStudentMuted;
     if (isStudentMuted) {
-        audioQueue = []; // Xoá hàng đợi âm thanh khi tắt tiếng
+        nextAudioPlayTime = 0;
     }
     updateStudentAudioUI();
 }
@@ -521,6 +521,7 @@ function updateStudentAudioUI(micActive = null) {
     const btn = document.getElementById('btn-student-audio-toggle');
     const icon = document.getElementById('student-speaker-icon');
     const text = document.getElementById('student-speaker-text');
+    const prompt = document.getElementById('mobile-unmute-prompt');
     if (!btn) return;
 
     const isTeacherSpeaking = micActive !== null ? micActive : (sessionState && sessionState.mic_active);
@@ -528,13 +529,21 @@ function updateStudentAudioUI(micActive = null) {
     if (!isTeacherSpeaking) {
         btn.classList.add('hidden');
         btn.classList.remove('flex');
-        const prompt = document.getElementById('mobile-unmute-prompt');
-        if (prompt) prompt.classList.add('hidden');
+        if (prompt) {
+            prompt.classList.add('hidden');
+            prompt.style.display = 'none';
+        }
         return;
     }
 
     btn.classList.remove('hidden');
     btn.classList.add('flex');
+
+    if (!audioUnlocked && prompt) {
+        prompt.classList.remove('hidden');
+        prompt.style.display = 'flex';
+    }
+
     if (isStudentMuted) {
         btn.className = "flex px-2 py-1 bg-rose-950/80 border border-rose-500/60 rounded-full text-[10px] text-rose-300 font-bold items-center space-x-1.5 shrink-0 transition hover:bg-rose-900/80 cursor-pointer";
         if (icon) icon.className = "fa-solid fa-volume-xmark text-rose-400";
@@ -546,59 +555,59 @@ function updateStudentAudioUI(micActive = null) {
     }
 }
 
-function handleIncomingAudioChunk(chunkBase64, mimeType = 'audio/webm') {
-    if (isStudentMuted || !chunkBase64) return;
+function handleIncomingAudioChunk(msg) {
+    if (isStudentMuted || !msg) return;
 
+    // Hiển thị nút bật tiếng nếu chưa được mở khoá trên điện thoại
     if (!audioUnlocked) {
         const prompt = document.getElementById('mobile-unmute-prompt');
-        if (prompt) prompt.classList.remove('hidden');
+        if (prompt) {
+            prompt.classList.remove('hidden');
+            prompt.style.display = 'flex';
+        }
+        return;
     }
 
-    // Giữ hàng đợi tối đa 3 gói (~540ms) để loại bỏ độ trễ tích lũy
-    if (audioQueue.length > 3) {
-        audioQueue.shift();
-    }
+    initOrResumeStudentAudioContext();
+    if (!studentAudioCtx) return;
 
-    const dataUri = chunkBase64.startsWith('data:') ? chunkBase64 : `data:${mimeType};base64,${chunkBase64}`;
-    audioQueue.push(dataUri);
+    const pcmBase64 = msg.pcm;
+    if (!pcmBase64) return;
 
-    if (!isAudioPlaying && audioUnlocked) {
-        processAudioQueue();
+    try {
+        const binaryStr = atob(pcmBase64);
+        const len = binaryStr.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+        }
+        const int16 = new Int16Array(bytes.buffer);
+        const float32 = new Float32Array(int16.length);
+        for (let i = 0; i < int16.length; i++) {
+            float32[i] = int16[i] / 32768.0;
+        }
+
+        const sampleRate = msg.sample_rate || 16000;
+        const audioBuffer = studentAudioCtx.createBuffer(1, float32.length, sampleRate);
+        audioBuffer.copyToChannel(float32, 0);
+
+        const source = studentAudioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(studentAudioCtx.destination);
+
+        const now = studentAudioCtx.currentTime;
+        if (nextAudioPlayTime < now || (nextAudioPlayTime - now) > 0.35) {
+            nextAudioPlayTime = now + 0.04;
+        }
+
+        source.start(nextAudioPlayTime);
+        nextAudioPlayTime += audioBuffer.duration;
+    } catch (e) {
+        console.warn("PCM audio decode/playback error:", e);
     }
 }
-
-function processAudioQueue() {
-    if (isAudioPlaying || isStudentMuted || audioQueue.length === 0) return;
-    if (!audioUnlocked) return;
-
-    const currentSrc = audioQueue.shift();
-    isAudioPlaying = true;
-
-    const audio = new Audio();
-    audio.src = currentSrc;
-    audio.volume = 1.0;
-
-    const playNext = () => {
-        isAudioPlaying = false;
-        audio.removeEventListener('ended', playNext);
-        audio.removeEventListener('error', playNext);
-        processAudioQueue();
-    };
-
-    audio.addEventListener('ended', playNext);
-    audio.addEventListener('error', (err) => {
-        console.warn("Audio chunk play error:", err);
-        playNext();
-    });
-
-    audio.play().catch(err => {
-        console.warn("Autoplay blocked:", err);
-        audioUnlocked = false;
-        isAudioPlaying = false;
-        const prompt = document.getElementById('mobile-unmute-prompt');
-        if (prompt) prompt.classList.remove('hidden');
-    });
-}
+window.unlockStudentAudio = unlockStudentAudio;
+window.toggleStudentAudioMute = toggleStudentAudioMute;
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

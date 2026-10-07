@@ -623,12 +623,12 @@ async function toggleScreenShare() {
 
 // ----------------- TEACHER MICROPHONE STREAMING (REAL-TIME VOICE BROADCAST) -----------------
 let micStream = null;
-let micRecorder = null;
 let isMicActive = false;
 let isMicToggling = false;
 let audioContext = null;
-let audioAnalyser = null;
-let micAnimFrame = null;
+let micScriptNode = null;
+let micSourceNode = null;
+let micMuteGain = null;
 
 function resetMicBtnUI() {
     isMicActive = false;
@@ -644,6 +644,47 @@ function resetMicBtnUI() {
     if (pulse) pulse.classList.add('hidden');
 }
 
+function downsampleAudioBuffer(buffer, inputRate, outputRate) {
+    if (inputRate === outputRate) return buffer;
+    const ratio = inputRate / outputRate;
+    const newLength = Math.round(buffer.length / ratio);
+    const result = new Float32Array(newLength);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
+    while (offsetResult < result.length) {
+        const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+        let accum = 0, count = 0;
+        for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+            accum += buffer[i];
+            count++;
+        }
+        result[offsetResult] = count > 0 ? (accum / count) : 0;
+        offsetResult++;
+        offsetBuffer = nextOffsetBuffer;
+    }
+    return result;
+}
+
+function floatTo16BitPCM(float32Array) {
+    const int16Array = new Int16Array(float32Array.length);
+    for (let i = 0; i < float32Array.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32Array[i]));
+        int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    return int16Array;
+}
+
+function int16ToBase64(int16Array) {
+    const bytes = new Uint8Array(int16Array.buffer);
+    let binary = '';
+    const len = bytes.byteLength;
+    const chunkSize = 4096;
+    for (let i = 0; i < len; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunkSize, len)));
+    }
+    return btoa(binary);
+}
+
 async function toggleMicrophone() {
     if (isMicToggling) return;
     isMicToggling = true;
@@ -657,19 +698,26 @@ async function toggleMicrophone() {
         if (isMicActive) {
             // Tắt Micro
             isMicActive = false;
-            if (micRecorder && micRecorder.state !== 'inactive') {
-                try { micRecorder.stop(); } catch(e) {}
+
+            if (micScriptNode) {
+                micScriptNode.onaudioprocess = null;
+                try { micScriptNode.disconnect(); } catch (e) {}
+                micScriptNode = null;
+            }
+            if (micSourceNode) {
+                try { micSourceNode.disconnect(); } catch (e) {}
+                micSourceNode = null;
+            }
+            if (micMuteGain) {
+                try { micMuteGain.disconnect(); } catch (e) {}
+                micMuteGain = null;
             }
             if (micStream) {
                 micStream.getTracks().forEach(t => t.stop());
                 micStream = null;
             }
-            if (micAnimFrame) {
-                cancelAnimationFrame(micAnimFrame);
-                micAnimFrame = null;
-            }
             if (audioContext && audioContext.state !== 'closed') {
-                try { audioContext.close(); } catch(e) {}
+                try { audioContext.close(); } catch (e) {}
                 audioContext = null;
             }
 
@@ -706,6 +754,60 @@ async function toggleMicrophone() {
                 video: false
             });
 
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) {
+                alert("Trình duyệt không hỗ trợ Web Audio API.");
+                resetMicBtnUI();
+                return;
+            }
+
+            audioContext = new AudioCtx();
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+
+            const inSampleRate = audioContext.sampleRate;
+            micSourceNode = audioContext.createMediaStreamSource(micStream);
+
+            // Buffer size 4096 (~85ms ở 48kHz, ~92ms ở 44.1kHz)
+            micScriptNode = audioContext.createScriptProcessor(4096, 1, 1);
+
+            micScriptNode.onaudioprocess = (e) => {
+                if (!isMicActive) return;
+                const inputData = e.inputBuffer.getChannelData(0);
+
+                // Đo âm lượng giọng nói để tạo hiệu ứng nhấp nháy cho Thầy/Cô
+                let sum = 0;
+                for (let i = 0; i < inputData.length; i++) {
+                    sum += inputData[i] * inputData[i];
+                }
+                const rms = Math.sqrt(sum / inputData.length);
+                if (pulse) {
+                    pulse.style.transform = `scale(${1 + Math.min(rms * 18, 2.5)})`;
+                }
+
+                // Hạ mẫu xuống 16,000 Hz và nén sang PCM 16-bit
+                const downsampled = downsampleAudioBuffer(inputData, inSampleRate, 16000);
+                const pcm16 = floatTo16BitPCM(downsampled);
+                const base64Pcm = int16ToBase64(pcm16);
+
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'AUDIO_CHUNK',
+                        pcm: base64Pcm,
+                        sample_rate: 16000
+                    }));
+                }
+            };
+
+            // Chống dội âm ra loa ngoài của chính máy Giáo viên
+            micMuteGain = audioContext.createGain();
+            micMuteGain.gain.value = 0;
+
+            micSourceNode.connect(micScriptNode);
+            micScriptNode.connect(micMuteGain);
+            micMuteGain.connect(audioContext.destination);
+
             isMicActive = true;
 
             if (btn) {
@@ -719,75 +821,6 @@ async function toggleMicrophone() {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'MIC_STATUS', active: true }));
             }
-
-            // Đo âm lượng giọng nói để tạo hiệu ứng nhấp nháy
-            try {
-                const AudioCtx = window.AudioContext || window.webkitAudioContext;
-                if (AudioCtx) {
-                    audioContext = new AudioCtx();
-                    const source = audioContext.createMediaStreamSource(micStream);
-                    audioAnalyser = audioContext.createAnalyser();
-                    audioAnalyser.fftSize = 256;
-                    source.connect(audioAnalyser);
-
-                    const dataArray = new Uint8Array(audioAnalyser.frequencyBinCount);
-                    const checkVolume = () => {
-                        if (!isMicActive) return;
-                        audioAnalyser.getByteFrequencyData(dataArray);
-                        let sum = 0;
-                        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-                        const avg = sum / dataArray.length;
-                        if (pulse) {
-                            pulse.style.transform = `scale(${1 + Math.min(avg / 25, 2)})`;
-                        }
-                        micAnimFrame = requestAnimationFrame(checkVolume);
-                    };
-                    checkVolume();
-                }
-            } catch (e) {
-                console.warn("Visualizer audio context:", e);
-            }
-
-            // Tìm định dạng âm thanh phù hợp
-            let mimeType = '';
-            const candidateTypes = [
-                'audio/webm;codecs=opus',
-                'audio/webm',
-                'audio/mp4',
-                'audio/aac',
-                'audio/ogg'
-            ];
-            if (typeof MediaRecorder !== 'undefined') {
-                for (const t of candidateTypes) {
-                    if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) {
-                        mimeType = t;
-                        break;
-                    }
-                }
-            }
-
-            const options = mimeType ? { mimeType, audioBitsPerSecond: 32000 } : {};
-            micRecorder = new MediaRecorder(micStream, options);
-
-            micRecorder.ondataavailable = (event) => {
-                if (event.data && event.data.size > 0 && isMicActive) {
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                            const base64Data = reader.result;
-                            ws.send(JSON.stringify({
-                                type: 'AUDIO_CHUNK',
-                                audio: base64Data,
-                                mime_type: mimeType || 'audio/webm'
-                            }));
-                        };
-                        reader.readAsDataURL(event.data);
-                    }
-                }
-            };
-
-            // Cắt lát âm thanh gửi đều đặn mỗi 200ms
-            micRecorder.start(200);
 
             if (micStream.getAudioTracks().length > 0) {
                 micStream.getAudioTracks()[0].onended = () => {

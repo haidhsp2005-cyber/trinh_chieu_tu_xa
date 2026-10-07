@@ -395,6 +395,8 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
             elif msg_type == "AUDIO_CHUNK":
                 await _broadcast_to_students(session, {
                     "type": "AUDIO_CHUNK",
+                    "pcm": data.get("pcm"),
+                    "sample_rate": data.get("sample_rate", 16000),
                     "audio": data.get("audio") or data.get("chunk"),
                     "mime_type": data.get("mime_type", "")
                 })

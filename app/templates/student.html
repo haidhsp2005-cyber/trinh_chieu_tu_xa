@@ -120,10 +120,10 @@
     </header>
 
     <!-- Floating Audio Prompt for Mobile/Autoplay unlock -->
-    <div id="mobile-unmute-prompt" onclick="unlockStudentAudio()" class="fixed top-12 left-1/2 -translate-x-1/2 z-50 bg-emerald-600/95 text-white px-4 py-2 rounded-2xl shadow-2xl flex items-center space-x-2 border border-emerald-400 backdrop-blur cursor-pointer hidden animate-bounce">
-        <i class="fa-solid fa-volume-high text-white text-sm"></i>
-        <span class="text-xs font-bold">Thầy/Cô đang nói • Chạm để BẬT TIẾNG</span>
-    </div>
+    <button id="mobile-unmute-prompt" onclick="unlockStudentAudio()" type="button" class="fixed top-14 left-1/2 -translate-x-1/2 z-[100] bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center space-x-2 border-2 border-emerald-300 backdrop-blur cursor-pointer hidden transition animate-bounce">
+        <i class="fa-solid fa-volume-high text-white text-base"></i>
+        <span class="text-xs sm:text-sm font-bold tracking-wide">Thầy/Cô đang nói • Chạm để BẬT TIẾNG</span>
+    </button>
 
     <!-- Main Presentation Viewing Stage (Edge-to-edge on mobile) -->
     <main class="flex-1 relative flex flex-col items-center justify-start p-0 sm:p-2 bg-slate-950 overflow-hidden">
@@ -226,6 +226,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/student.js?v=10"></script>
+    <script src="/static/js/student.js?v=11"></script>
 </body>
 </html>
