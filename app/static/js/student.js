@@ -165,19 +165,21 @@ function applyZoomAndFit(zoom = currentZoom, fitMode = currentFitMode) {
     if (currentFitMode === 'width') {
         if (stage) {
             const widthClass = currentZoom >= 2.0 ? 'max-w-7xl' : (currentZoom >= 1.5 ? 'max-w-6xl' : (currentZoom >= 1.25 ? 'max-w-5xl' : 'max-w-4xl'));
-            stage.className = `relative w-full ${widthClass} bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-center border border-slate-800 transition-all duration-150 my-4`;
+            stage.className = `relative w-full ${widthClass} bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-start border border-slate-800 transition-all duration-150 my-2`;
         }
         if (img) {
             img.style.width = '100%';
+            img.style.maxWidth = '100%';
             img.style.maxHeight = 'none';
             img.style.height = 'auto';
         }
     } else {
         if (stage) {
-            stage.className = `relative max-h-[calc(100vh-120px)] aspect-[16/9] w-auto max-w-[95vw] bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-center border border-slate-800 transition-all duration-150 my-auto`;
+            stage.className = `relative max-h-[calc(100vh-120px)] w-fit max-w-[95vw] bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-center border border-slate-800 transition-all duration-150 my-auto`;
         }
         if (img) {
             img.style.width = 'auto';
+            img.style.maxWidth = 'calc(100vw - 40px)';
             img.style.maxHeight = 'calc(100vh - 130px)';
             img.style.height = 'auto';
         }

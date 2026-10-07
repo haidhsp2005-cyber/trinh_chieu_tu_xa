@@ -128,23 +128,25 @@ function applyZoomAndFit() {
         }
         if (stage) {
             const widthClass = zoomLevel >= 2.0 ? 'max-w-7xl' : (zoomLevel >= 1.5 ? 'max-w-6xl' : (zoomLevel >= 1.25 ? 'max-w-5xl' : 'max-w-4xl'));
-            stage.className = `relative w-full ${widthClass} bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-center border border-slate-800 transition-all duration-150 my-4`;
+            stage.className = `relative w-full ${widthClass} bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-start border border-slate-800 transition-all duration-150 my-2`;
         }
         if (img) {
             img.style.width = '100%';
+            img.style.maxWidth = '100%';
             img.style.maxHeight = 'none';
             img.style.height = 'auto';
         }
     } else {
-        if (textFit) textFit.textContent = "Vừa toàn khung";
+        if (textFit) textFit.textContent = "Vừa toàn trang";
         if (btnFit) {
             btnFit.className = "px-2.5 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-slate-300 hover:text-white transition flex items-center space-x-1";
         }
         if (stage) {
-            stage.className = `relative max-h-[calc(100vh-160px)] aspect-[16/9] w-auto max-w-[95vw] bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-center border border-slate-800 transition-all duration-150 my-auto`;
+            stage.className = `relative max-h-[calc(100vh-160px)] w-fit max-w-[95vw] bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-center border border-slate-800 transition-all duration-150 my-auto`;
         }
         if (img) {
             img.style.width = 'auto';
+            img.style.maxWidth = 'calc(100vw - 60px)';
             img.style.maxHeight = 'calc(100vh - 170px)';
             img.style.height = 'auto';
         }
@@ -567,46 +569,86 @@ async function toggleScreenShare() {
     }
 }
 
-// ----------------- SHARE MODAL & QR CODE -----------------
+// ----------------- SHARE MODAL & QR CODE (DUAL TABS) -----------------
 
 let qrcodeObj = null;
+let currentShareTab = 'internet';
+let internetShareUrl = '';
+let lanShareUrl = '';
 
 function openShareModal() {
     const modal = document.getElementById('share-modal');
     modal.classList.remove('hidden');
 
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    let studentUrl = '';
 
+    // 1. Internet Share URL: Lấy chính URL của trang web (trên Render là https://trinh-chieu-tu-xa.onrender.com)
     if (!isLocalhost) {
-        // Đang chạy trên Render, Cloud hoặc tên miền Internet
-        studentUrl = `${window.location.origin}/view/${ROOM_ID}`;
+        internetShareUrl = `${window.location.origin}/view/${ROOM_ID}`;
     } else {
-        // Đang chạy trên máy giáo viên (Localhost)
-        studentUrl = `http://${LAN_IP}:8000/view/${ROOM_ID}`;
+        internetShareUrl = `${window.location.protocol}//${window.location.host}/view/${ROOM_ID}`;
     }
 
-    document.getElementById('share-url-input').value = studentUrl;
+    // 2. LAN Share URL: Lấy IP mạng LAN nội bộ
+    lanShareUrl = `http://${LAN_IP}:8000/view/${ROOM_ID}`;
 
-    const lanNoteText = document.getElementById('lan-note-text');
-    if (lanNoteText) {
-        if (!isLocalhost) {
-            lanNoteText.innerHTML = `Học sinh có thể truy cập qua Internet (WiFi hoặc 4G) từ mọi nơi: <strong class="font-mono text-emerald-800 break-all">${studentUrl}</strong>`;
-        } else {
-            lanNoteText.innerHTML = `Trong phòng tin học hoặc cùng mạng WiFi trường, học sinh truy cập: <strong class="font-mono text-amber-900 break-all">${studentUrl}</strong>`;
+    // Tự động chọn tab phù hợp nhất: nếu đang ở Render thì ưu tiên Internet, nếu ở localhost thì ưu tiên LAN
+    selectShareTab(isLocalhost ? 'lan' : 'internet');
+}
+
+function selectShareTab(tab) {
+    currentShareTab = tab;
+    const btnInternet = document.getElementById('tab-btn-internet');
+    const btnLan = document.getElementById('tab-btn-lan');
+    const inputUrl = document.getElementById('share-url-input');
+    const labelUrl = document.getElementById('share-url-label');
+    const badgeTag = document.getElementById('share-badge-tag');
+    const guideText = document.getElementById('qr-guide-text');
+    const noteText = document.getElementById('lan-note-text');
+    const noteBox = document.getElementById('lan-note-box');
+
+    let activeUrl = '';
+
+    if (tab === 'internet') {
+        activeUrl = internetShareUrl;
+        if (btnInternet) btnInternet.className = "flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 bg-blue-600 text-white shadow-sm";
+        if (btnLan) btnLan.className = "flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 text-slate-600 hover:text-slate-900";
+        if (labelUrl) labelUrl.textContent = "Đường link Internet (Xem từ mọi nơi):";
+        if (badgeTag) {
+            badgeTag.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700";
+            badgeTag.textContent = "Toàn quốc / 4G";
         }
+        if (guideText) guideText.textContent = "Quét mã QR để mở link Internet trên điện thoại / iPad";
+        if (noteBox) noteBox.className = "p-3 bg-blue-50/80 border border-blue-200 rounded-xl text-[11px] text-blue-900 flex items-start space-x-2";
+        if (noteText) noteText.innerHTML = `Học sinh ở bất kỳ đâu chỉ cần có mạng Internet (WiFi hoặc 4G/5G) đều có thể truy cập link trên mà không cần chung mạng LAN.`;
+    } else {
+        activeUrl = lanShareUrl;
+        if (btnLan) btnLan.className = "flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 bg-blue-600 text-white shadow-sm";
+        if (btnInternet) btnInternet.className = "flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 text-slate-600 hover:text-slate-900";
+        if (labelUrl) labelUrl.textContent = "Đường link mạng LAN nội bộ:";
+        if (badgeTag) {
+            badgeTag.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800";
+            badgeTag.textContent = "Chung Wi-Fi trường";
+        }
+        if (guideText) guideText.textContent = "Dành cho học sinh kết nối cùng mạng WiFi phòng học / trường";
+        if (noteBox) noteBox.className = "p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 flex items-start space-x-2";
+        if (noteText) noteText.innerHTML = `Trong phòng tin học hoặc khi kết nối chung mạng WiFi trường, học sinh nhập địa chỉ: <strong class="font-mono text-amber-900 break-all">${activeUrl}</strong>`;
     }
+
+    if (inputUrl) inputUrl.value = activeUrl;
 
     const qrContainer = document.getElementById('qrcode-container');
-    qrContainer.innerHTML = '';
-    qrcodeObj = new QRCode(qrContainer, {
-        text: studentUrl,
-        width: 160,
-        height: 160,
-        colorDark: "#0f172a",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.M
-    });
+    if (qrContainer) {
+        qrContainer.innerHTML = '';
+        qrcodeObj = new QRCode(qrContainer, {
+            text: activeUrl,
+            width: 160,
+            height: 160,
+            colorDark: "#0f172a",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.M
+        });
+    }
 }
 
 function closeShareModal() {
