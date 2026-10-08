@@ -105,6 +105,12 @@
                 <span id="mic-pulse" class="w-2 h-2 rounded-full bg-emerald-400 hidden animate-ping"></span>
             </button>
 
+            <!-- Nút Tắt tất cả Micro Học Sinh -->
+            <button id="btn-mute-all-students" onclick="muteAllStudents()" type="button" class="px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-rose-950/80 hover:text-rose-200 hover:border-rose-700/60 text-slate-300 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition border border-slate-700 cursor-pointer" title="Tắt toàn bộ Micro của tất cả học sinh trong lớp">
+                <i class="fa-solid fa-microphone-slash text-rose-400"></i>
+                <span class="hidden xl:inline">Tắt tất cả mic HS</span>
+            </button>
+
             <!-- Nút Chia sẻ Màn hình (WebRTC) -->
             <button id="btn-screen-share" onclick="toggleScreenShare()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition">
                 <i class="fa-solid fa-display text-blue-400"></i>
@@ -140,7 +146,11 @@
         </div>
         <button onclick="forceMuteSpeakingStudent()" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white rounded-lg text-[11px] font-bold transition flex items-center space-x-1 shadow-md shadow-rose-600/30 cursor-pointer" title="Tắt micro của học sinh này">
             <i class="fa-solid fa-microphone-slash text-[10px]"></i>
-            <span>Tắt mic HS</span>
+            <span>Tắt mic</span>
+        </button>
+        <button onclick="muteAllStudents()" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white rounded-lg text-[11px] font-bold transition flex items-center space-x-1 shadow-md shadow-amber-600/30 cursor-pointer" title="Tắt micro của tất cả học sinh trong phòng">
+            <i class="fa-solid fa-volume-xmark text-[10px]"></i>
+            <span>Tắt tất cả mic</span>
         </button>
     </div>
 
@@ -438,6 +448,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/teacher.js?v=12"></script>
+    <script src="/static/js/teacher.js?v=13"></script>
 </body>
 </html>

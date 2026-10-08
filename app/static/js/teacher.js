@@ -1145,6 +1145,27 @@ function forceMuteSpeakingStudent() {
     currentSpeakingStudentId = null;
 }
 
+function muteAllStudents() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'TEACHER_MUTE_ALL_STUDENTS'
+        }));
+    }
+    const banner = document.getElementById('student-speaking-banner');
+    if (banner) banner.classList.add('hidden');
+    currentSpeakingStudentId = null;
+
+    // Phản hồi trực quan trên nút ở thanh header
+    const btnHeader = document.getElementById('btn-mute-all-students');
+    if (btnHeader) {
+        const originalHtml = btnHeader.innerHTML;
+        btnHeader.innerHTML = `<i class="fa-solid fa-check text-emerald-400"></i><span class="hidden xl:inline">Đã tắt tất cả mic</span>`;
+        setTimeout(() => {
+            btnHeader.innerHTML = originalHtml;
+        }, 1500);
+    }
+}
+
 function initOrResumeTeacherAudioPlayer() {
     try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -1204,6 +1225,7 @@ function handleStudentAudioChunk(msg) {
 window.toggleChatDrawer = toggleChatDrawer;
 window.sendTeacherChatMessage = sendTeacherChatMessage;
 window.forceMuteSpeakingStudent = forceMuteSpeakingStudent;
+window.muteAllStudents = muteAllStudents;
 
 // Chạy init ngay lập tức (không chờ DOMContentLoaded nếu đã sẵn sàng)
 if (document.readyState === 'loading') {

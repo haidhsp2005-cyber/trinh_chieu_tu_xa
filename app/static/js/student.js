@@ -204,7 +204,7 @@ function connectWebSocket() {
 
         // 15. Giáo viên tắt micro học sinh cưỡng bức
         else if (msg.type === 'FORCE_MUTE') {
-            handleForceMute();
+            handleForceMute(msg);
         }
     };
 
@@ -1032,10 +1032,14 @@ async function toggleStudentMicrophone() {
     }
 }
 
-function handleForceMute() {
+function handleForceMute(msg) {
     if (isStudentMicActive) {
         toggleStudentMicrophone();
-        alert("Thầy/Cô đã tắt micro của bạn để ổn định lớp học.");
+        if (msg && msg.mute_all) {
+            alert("Thầy/Cô đã tắt micro của tất cả học sinh để ổn định trật tự lớp.");
+        } else {
+            alert("Thầy/Cô đã tắt micro của bạn để ổn định lớp học.");
+        }
     }
 }
 
@@ -1044,7 +1048,7 @@ function handlePeerStudentMicStatus(studentId, studentName, active) {
     const nameEl = document.getElementById('peer-speaking-name');
     if (!notice) return;
 
-    if (active && studentId !== ownClientId) {
+    if (active && studentId && studentId !== ownClientId) {
         if (nameEl) nameEl.textContent = studentName || 'Học sinh';
         notice.classList.remove('hidden');
     } else {

@@ -481,7 +481,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
                             except Exception:
                                 pass
 
-            # 9. Giáo viên tắt micro của học sinh (Force Mute)
+            # 9. Giáo viên tắt micro của học sinh cụ thể (Force Mute)
             elif msg_type == "TEACHER_MUTE_STUDENT":
                 target_id = data.get("student_id")
                 if target_id and target_id in session.students:
@@ -496,6 +496,25 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
                 await _broadcast_to_all(session, {
                     "type": "STUDENT_MIC_STATUS",
                     "student_id": target_id,
+                    "student_name": "",
+                    "active": False
+                })
+
+            # 9b. Giáo viên tắt TẤT CẢ micro của toàn bộ học sinh (Mute All Students)
+            elif msg_type == "TEACHER_MUTE_ALL_STUDENTS":
+                session.speaking_student = None
+                # Gửi lệnh FORCE_MUTE tới toàn bộ học sinh đang kết nối
+                for sid, s_ws in list(session.students.items()):
+                    try:
+                        await s_ws.send_json({
+                            "type": "FORCE_MUTE",
+                            "mute_all": True
+                        })
+                    except Exception:
+                        pass
+                await _broadcast_to_all(session, {
+                    "type": "STUDENT_MIC_STATUS",
+                    "student_id": None,
                     "student_name": "",
                     "active": False
                 })
