@@ -1,7 +1,9 @@
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
-    DEBIAN_FRONTEND=noninteractive
+    DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
 
 # Cài đặt LibreOffice và font tiếng Việt/quốc tế để kết xuất PPTX và DOCX chuẩn đồ họa trên Linux
 RUN apt-get update && apt-get install -y --no-install-recommends \

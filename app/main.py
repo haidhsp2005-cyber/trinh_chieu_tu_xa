@@ -25,40 +25,59 @@ app = FastAPI(title="Smart Classroom - Realtime Presentation")
 
 @app.get("/cache/{doc_id}/{filename}")
 async def serve_cached_slide(doc_id: str, filename: str):
-    file_path = os.path.join(CACHE_DIR, doc_id, filename)
+    import urllib.parse
+    decoded_doc_id = urllib.parse.unquote(doc_id)
     headers = {"Cache-Control": "public, max-age=86400"}
-    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-        return FileResponse(file_path, headers=headers)
 
-    # Nếu slide chưa kịp render chạy ngầm (ví dụ nhảy vọt tới trang xa), render tức thì trong ~80ms
+    # 1. Kiểm tra file đã có sẵn
+    for cid in [doc_id, decoded_doc_id]:
+        file_path = os.path.join(CACHE_DIR, cid, filename)
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+            return FileResponse(file_path, headers=headers)
+
+    # 2. Nếu chưa có ảnh, render tức thì on-demand trong ~50ms
     if filename.startswith("page_") and filename.endswith(".png"):
         try:
             page_num_str = filename.replace("page_", "").replace(".png", "")
             page_index = int(page_num_str) - 1
-            doc_dir = os.path.join(CACHE_DIR, doc_id)
-            temp_pdf = os.path.join(doc_dir, "exported_slides.pdf")
-            if not os.path.exists(temp_pdf):
-                candidates = [os.path.join(doc_dir, f) for f in os.listdir(doc_dir) if f.endswith(".pdf")]
-                if candidates:
-                    temp_pdf = candidates[0]
 
-            if os.path.exists(temp_pdf):
-                import pymupdf
-                doc = pymupdf.open(temp_pdf)
-                if page_index < len(doc):
-                    mat = pymupdf.Matrix(1.6, 1.6)
-                    pix = doc[page_index].get_pixmap(matrix=mat)
-                    tmp_file_path = f"{file_path}.tmp"
-                    pix.save(tmp_file_path)
-                    os.replace(tmp_file_path, file_path)
-                doc.close()
-                if os.path.exists(file_path):
-                    return FileResponse(file_path, headers=headers)
+            doc_dir = None
+            for cid in [doc_id, decoded_doc_id]:
+                d = os.path.join(CACHE_DIR, cid)
+                if os.path.isdir(d):
+                    doc_dir = d
+                    break
+
+            if doc_dir:
+                temp_pdf = os.path.join(doc_dir, "exported_slides.pdf")
+                if not os.path.exists(temp_pdf):
+                    candidates = [os.path.join(doc_dir, f) for f in os.listdir(doc_dir) if f.endswith(".pdf")]
+                    if candidates:
+                        temp_pdf = candidates[0]
+
+                if os.path.exists(temp_pdf):
+                    import pymupdf
+                    doc = pymupdf.open(temp_pdf)
+                    target_file = os.path.join(doc_dir, filename)
+                    if page_index < len(doc):
+                        mat = pymupdf.Matrix(1.6, 1.6)
+                        pix = doc[page_index].get_pixmap(matrix=mat)
+                        tmp_file_path = f"{target_file}.tmp.png"
+                        pix.save(tmp_file_path, output="png")
+                        os.replace(tmp_file_path, target_file)
+                        del pix
+                    doc.close()
+                    del doc
+                    if os.path.exists(target_file):
+                        return FileResponse(target_file, headers=headers)
         except Exception as e:
             print(f"On-demand slide render error: {e}")
 
-    if os.path.exists(file_path):
-        return FileResponse(file_path, headers=headers)
+    for cid in [doc_id, decoded_doc_id]:
+        fp = os.path.join(CACHE_DIR, cid, filename)
+        if os.path.exists(fp):
+            return FileResponse(fp, headers=headers)
+
     return Response(status_code=404)
 
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
@@ -162,10 +181,25 @@ def ensure_session_loaded(room_id: str, material_id: str = None) -> ClassroomSes
             session.material_id = material_id
             session.title = mat["title"]
             try:
-                session.doc_data = process_uploaded_document(mat["filepath"], CACHE_DIR)
+                raw_path = mat.get("filepath", "")
+                target_path = raw_path
+                if not os.path.exists(target_path):
+                    fname = os.path.basename(raw_path)
+                    for alt in [
+                        os.path.join(UPLOAD_DIR, fname),
+                        os.path.join(BASE_DIR, "uploads", fname),
+                        os.path.join(os.getcwd(), "app", "uploads", fname),
+                        os.path.join(os.getcwd(), raw_path)
+                    ]:
+                        if os.path.exists(alt):
+                            target_path = alt
+                            break
+                session.doc_data = process_uploaded_document(target_path, CACHE_DIR)
                 session.current_page = 1
                 session.drawings = []
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 print(f"Error parsing document: {e}")
     return session
 

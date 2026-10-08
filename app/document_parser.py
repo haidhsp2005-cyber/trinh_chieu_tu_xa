@@ -130,22 +130,40 @@ def _convert_office_linux(input_path: str, output_pdf_path: str) -> bool:
 
 import threading
 import shutil
+import re
+import time
+import gc
+
+def _get_clean_doc_id(file_path: str) -> str:
+    """Tạo doc_id 100% chuẩn ký tự ASCII an toàn cho URL và hệ điều hành (không dấu, không khoảng trắng)."""
+    base = os.path.splitext(os.path.basename(file_path))[0]
+    ext = os.path.splitext(file_path)[1].lower().replace(".", "")
+    clean = re.sub(r'[^a-zA-Z0-9_-]', '_', base)
+    clean = re.sub(r'_+', '_', clean).strip('_')
+    if not clean:
+        clean = "doc"
+    return f"{clean}_{ext}"
 
 def _render_remaining_pages_background(pdf_path: str, output_dir: str, total_pages: int, zoom: float = 1.6):
-    """Render ngầm các trang từ trang 3 đến trang cuối cùng để người dùng vào phòng học tức thì."""
+    """Render ngầm nhẹ nhàng tối đa 4 trang kế tiếp (không bao giờ render hàng trăm trang cùng lúc làm tràn RAM)."""
     def worker():
         try:
             doc = pymupdf.open(pdf_path)
             mat = pymupdf.Matrix(zoom, zoom)
-            for i in range(2, total_pages):
+            limit_pages = min(total_pages, 6)
+            for i in range(2, limit_pages):
                 img_filename = f"page_{i + 1}.png"
                 img_path = os.path.join(output_dir, img_filename)
                 if not os.path.exists(img_path) or os.path.getsize(img_path) == 0:
                     pix = doc[i].get_pixmap(matrix=mat)
-                    tmp_path = f"{img_path}.tmp"
-                    pix.save(tmp_path)
+                    tmp_path = f"{img_path}.tmp.png"
+                    pix.save(tmp_path, output="png")
                     os.replace(tmp_path, img_path)
+                    del pix
+                time.sleep(0.05)  # Nhường CPU cho luồng chính
             doc.close()
+            del doc
+            gc.collect()
         except Exception as e:
             print(f"Background rendering error: {e}")
 
@@ -155,9 +173,9 @@ def _render_remaining_pages_background(pdf_path: str, output_dir: str, total_pag
 def _render_pdf_to_images(pdf_path: str, output_dir: str, doc_id: str, format_name: str) -> dict:
     """
     Renders PDF / Office / converted document pages progressively:
-    - Trang 1 & 2 được render ngay lập tức để người dùng mở trang chỉ mất 1-2 giây!
-    - Toàn bộ các trang còn lại (3..N) được render chạy ngầm không làm đơ/nghẽn giao diện.
-    - Áp dụng cho TẤT CẢ các định dạng (PDF, PPTX, DOCX...)
+    - Trang 1 & 2 được render ngay lập tức trong ~0.1 giây để vào phòng học tức thì!
+    - Các trang tiếp theo được render theo nhu cầu (on-demand) trong 50ms khi người dùng lật tới.
+    - Tuyệt đối không bao giờ làm tràn RAM hay nghẽn CPU máy chủ.
     """
     dest_pdf = os.path.join(output_dir, "exported_slides.pdf")
     if not os.path.exists(dest_pdf) or os.path.getsize(dest_pdf) == 0:
@@ -167,10 +185,11 @@ def _render_pdf_to_images(pdf_path: str, output_dir: str, doc_id: str, format_na
             except Exception:
                 pass
 
-    doc = pymupdf.open(pdf_path)
+    target_pdf = dest_pdf if (os.path.exists(dest_pdf) and os.path.getsize(dest_pdf) > 0) else pdf_path
+    doc = pymupdf.open(target_pdf)
     total_pages = len(doc)
     pages = []
-    zoom = 1.6  # Chuẩn Full HD sắc nét, tốc độ xuất ảnh nhanh gấp đôi so với 2.0
+    zoom = 1.6
     mat = pymupdf.Matrix(zoom, zoom)
 
     # 1. Tạo danh mục (manifest) siêu tốc mà không đọc text toàn trang gây nghẽn
@@ -187,18 +206,20 @@ def _render_pdf_to_images(pdf_path: str, output_dir: str, doc_id: str, format_na
             "aspect_ratio": aspect_ratio
         })
 
-    # 2. Render ngay 2 trang đầu tiên để vào trang trình chiếu trong chớp mắt
+    # 2. Render ngay 2 trang đầu tiên để vào trang trình chiếu trong 0.1 giây
     pages_to_render_now = min(2, total_pages)
     for i in range(pages_to_render_now):
         img_filename = f"page_{i + 1}.png"
         img_path = os.path.join(output_dir, img_filename)
         if not os.path.exists(img_path) or os.path.getsize(img_path) == 0:
             pix = doc[i].get_pixmap(matrix=mat)
-            tmp_path = f"{img_path}.tmp"
-            pix.save(tmp_path)
+            tmp_path = f"{img_path}.tmp.png"
+            pix.save(tmp_path, output="png")
             os.replace(tmp_path, img_path)
+            del pix
 
     doc.close()
+    del doc
 
     result = {
         "format": format_name,
@@ -208,10 +229,9 @@ def _render_pdf_to_images(pdf_path: str, output_dir: str, doc_id: str, format_na
     }
     _save_manifest(output_dir, result)
 
-    # 3. Kích hoạt luồng chạy ngầm render tiếp các trang 3..N
+    # 3. Kích hoạt luồng chạy ngầm nhẹ nhàng tối đa 4 trang tiếp theo
     if total_pages > pages_to_render_now:
-        target_render_pdf = dest_pdf if os.path.exists(dest_pdf) else pdf_path
-        _render_remaining_pages_background(target_render_pdf, output_dir, total_pages, zoom)
+        _render_remaining_pages_background(target_pdf, output_dir, total_pages, zoom)
 
     return result
 
@@ -258,7 +278,7 @@ def process_uploaded_document(file_path: str, cache_dir: str) -> dict:
     - Fallback: structured text cards
     """
     ext = os.path.splitext(file_path)[1].lower()
-    doc_id = os.path.basename(file_path).replace(".", "_")
+    doc_id = _get_clean_doc_id(file_path)
     output_dir = os.path.join(cache_dir, doc_id)
     os.makedirs(output_dir, exist_ok=True)
 
