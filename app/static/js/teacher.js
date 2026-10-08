@@ -793,6 +793,8 @@ async function toggleMicrophone() {
 
             micScriptNode.onaudioprocess = (e) => {
                 if (!isMicActive) return;
+                // Chống vọng âm phản hồi: Khi có học sinh đang phát biểu, tạm dừng gửi mic giáo viên để tránh thu lại tiếng từ loa ngoài
+                if (currentSpeakingStudentId) return;
                 const inputData = e.inputBuffer.getChannelData(0);
 
                 // Đo âm lượng giọng nói để tạo hiệu ứng nhấp nháy cho Thầy/Cô
@@ -973,13 +975,22 @@ function toggleFullScreen() {
 
 function setupKeyboardNavigation() {
     window.addEventListener('keydown', (e) => {
+        // Nếu người dùng đang gõ trong ô nhập liệu (chat input, search...), bỏ qua các phím tắt
+        const targetTag = e.target.tagName ? e.target.tagName.toLowerCase() : '';
+        if (targetTag === 'input' || targetTag === 'textarea' || e.target.isContentEditable) {
+            return;
+        }
+
         if (e.key === 'Escape') {
             closeShareModal();
             return;
         }
-        if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+        // Chỉ bấm phím mũi tên (ArrowLeft / ArrowRight) hoặc PageUp / PageDown mới chuyển slide, không dùng phím cách (Space)
+        if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+            e.preventDefault();
             nextPage();
         } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+            e.preventDefault();
             prevPage();
         } else if (e.key === 'l' || e.key === 'L') {
             setTool(currentTool === 'laser' ? 'cursor' : 'laser');
@@ -1187,7 +1198,7 @@ function handleStudentAudioChunk(msg) {
     if (!pcmBase64) return;
 
     initOrResumeTeacherAudioPlayer();
-    if (!teacherAudioPlayerCtx || teacherAudioPlayerCtx.state !== 'running') return;
+    if (!teacherAudioPlayerCtx) return;
 
     try {
         const binaryStr = atob(pcmBase64);
@@ -1226,6 +1237,11 @@ window.toggleChatDrawer = toggleChatDrawer;
 window.sendTeacherChatMessage = sendTeacherChatMessage;
 window.forceMuteSpeakingStudent = forceMuteSpeakingStudent;
 window.muteAllStudents = muteAllStudents;
+
+// Mở khoá AudioContext của Giáo viên ngay khi có thao tác bất kỳ (Click, chạm, bấm phím)
+document.addEventListener('click', () => { initOrResumeTeacherAudioPlayer(); }, { passive: true });
+document.addEventListener('touchstart', () => { initOrResumeTeacherAudioPlayer(); }, { passive: true });
+document.addEventListener('keydown', () => { initOrResumeTeacherAudioPlayer(); }, { passive: true });
 
 // Chạy init ngay lập tức (không chờ DOMContentLoaded nếu đã sẵn sàng)
 if (document.readyState === 'loading') {

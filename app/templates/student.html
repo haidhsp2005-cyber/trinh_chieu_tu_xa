@@ -141,6 +141,12 @@
         <span><span id="peer-speaking-name" class="text-cyan-300">Bạn A</span> đang phát biểu</span>
     </div>
 
+    <!-- Thông báo nếu học sinh mở link bài cũ trong khi Thầy/Cô đang ở bài mới -->
+    <div id="old-link-notice" class="fixed top-12 left-1/2 -translate-x-1/2 z-50 bg-amber-500/95 border-2 border-amber-300 text-slate-950 px-4 py-2 rounded-2xl shadow-2xl flex items-center space-x-2.5 backdrop-blur hidden transition text-xs font-bold animate-bounce cursor-pointer" onclick="redirectToActiveTeacherRoom()">
+        <i class="fa-solid fa-triangle-exclamation text-amber-950 text-sm"></i>
+        <span>Thầy/Cô đang dạy bài: <span id="active-lesson-name" class="underline font-black text-amber-950">Bài mới</span>. Chạm để vào đúng lớp!</span>
+    </div>
+
     <!-- Floating Audio Prompt for Mobile/Autoplay unlock -->
     <button id="mobile-unmute-prompt" onclick="unlockStudentAudio()" type="button" class="fixed top-14 left-1/2 -translate-x-1/2 z-[100] bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center space-x-2 border-2 border-emerald-300 backdrop-blur cursor-pointer hidden transition animate-bounce">
         <i class="fa-solid fa-volume-high text-white text-base"></i>
@@ -288,6 +294,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/student.js?v=13"></script>
+    <script src="/static/js/student.js?v=14"></script>
 </body>
 </html>

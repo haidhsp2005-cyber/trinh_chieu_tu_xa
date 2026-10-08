@@ -7,41 +7,54 @@ const ctx = canvas.getContext('2d');
 const stageWrapper = document.getElementById('stage-wrapper');
 const laserDot = document.getElementById('laser-dot');
 
+let targetActiveTeacherRoom = null;
+
+function redirectToActiveTeacherRoom() {
+    if (targetActiveTeacherRoom) {
+        window.location.href = `/view/${targetActiveTeacherRoom}`;
+    }
+}
+window.redirectToActiveTeacherRoom = redirectToActiveTeacherRoom;
+
 function init() {
-    if (typeof window !== 'undefined' && window.INITIAL_SESSION) {
-        sessionState = window.INITIAL_SESSION;
-    } else if (typeof INITIAL_SESSION !== 'undefined') {
-        sessionState = INITIAL_SESSION;
+    try {
+        if (typeof window !== 'undefined' && window.INITIAL_SESSION) {
+            sessionState = window.INITIAL_SESSION;
+        } else if (typeof INITIAL_SESSION !== 'undefined') {
+            sessionState = INITIAL_SESSION;
+        }
+
+        updateStudentNameUI();
+
+        if (sessionState && sessionState.doc_data) {
+            if (sessionState.doc_data.format === 'pptx') {
+                currentFitMode = 'page';
+            }
+            document.getElementById('room-title-text').textContent = sessionState.title || "Lớp học trực tuyến";
+            document.title = sessionState.title || "Lớp học trực tuyến";
+            renderPage(sessionState.current_page || 1);
+            if (sessionState.drawings) {
+                redrawAllStrokes(sessionState.drawings);
+            }
+            if (sessionState.mode) {
+                switchDisplayMode(sessionState.mode);
+            }
+            if (sessionState.mic_active !== undefined) {
+                updateStudentAudioUI(sessionState.mic_active);
+            }
+            if (sessionState.chat_messages) {
+                loadInitialStudentChatMessages(sessionState.chat_messages);
+            }
+            if (sessionState.speaking_student) {
+                handlePeerStudentMicStatus(sessionState.speaking_student.id, sessionState.speaking_student.name, true);
+            }
+        }
+
+        setupCanvasResolution();
+        window.addEventListener('resize', setupCanvasResolution);
+    } catch (e) {
+        console.warn("Init setup warning:", e);
     }
-
-    updateStudentNameUI();
-
-    if (sessionState && sessionState.doc_data) {
-        if (sessionState.doc_data.format === 'pptx') {
-            currentFitMode = 'page';
-        }
-        document.getElementById('room-title-text').textContent = sessionState.title || "Lớp học trực tuyến";
-        document.title = sessionState.title || "Lớp học trực tuyến";
-        renderPage(sessionState.current_page || 1);
-        if (sessionState.drawings) {
-            redrawAllStrokes(sessionState.drawings);
-        }
-        if (sessionState.mode) {
-            switchDisplayMode(sessionState.mode);
-        }
-        if (sessionState.mic_active !== undefined) {
-            updateStudentAudioUI(sessionState.mic_active);
-        }
-        if (sessionState.chat_messages) {
-            loadInitialStudentChatMessages(sessionState.chat_messages);
-        }
-        if (sessionState.speaking_student) {
-            handlePeerStudentMicStatus(sessionState.speaking_student.id, sessionState.speaking_student.name, true);
-        }
-    }
-
-    setupCanvasResolution();
-    window.addEventListener('resize', setupCanvasResolution);
     connectWebSocket();
 }
 
@@ -55,8 +68,25 @@ function setupCanvasResolution() {
 }
 
 // ----------------- WEBSOCKET REALTIME SYNC -----------------
+let reconnectTimer = null;
 
 function connectWebSocket() {
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    }
+
+    if (ws) {
+        try {
+            ws.onopen = null;
+            ws.onmessage = null;
+            ws.onerror = null;
+            ws.onclose = null;
+            ws.close();
+        } catch (e) {}
+        ws = null;
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/${ROOM_ID}/student`;
     ws = new WebSocket(wsUrl);
@@ -94,6 +124,18 @@ function connectWebSocket() {
             }
             if (sessionState.speaking_student) {
                 handlePeerStudentMicStatus(sessionState.speaking_student.id, sessionState.speaking_student.name, true);
+            }
+
+            // Kiểm tra nếu học sinh mở link bài cũ trong khi Thầy/Cô đang ở bài mới
+            if (msg.is_old_link && msg.active_teacher_room) {
+                targetActiveTeacherRoom = msg.active_teacher_room;
+                const notice = document.getElementById('old-link-notice');
+                const titleEl = document.getElementById('active-lesson-name');
+                if (titleEl) titleEl.textContent = msg.active_teacher_title || 'Bài giảng đang diễn ra';
+                if (notice) notice.classList.remove('hidden');
+            } else {
+                const notice = document.getElementById('old-link-notice');
+                if (notice) notice.classList.add('hidden');
             }
         }
 
@@ -211,9 +253,31 @@ function connectWebSocket() {
     ws.onclose = () => {
         updateSyncStatus(false);
         console.warn("WebSocket closed, reconnecting in 2s...");
-        setTimeout(connectWebSocket, 2000);
+        if (!reconnectTimer) {
+            reconnectTimer = setTimeout(connectWebSocket, 2000);
+        }
     };
 }
+
+// Tự động kết nối lại ngay khi học sinh quay lại màn hình điện thoại hoặc mở lại tab
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+            console.log("Tab resumed, reconnecting WebSocket...");
+            connectWebSocket();
+        }
+    }
+});
+window.addEventListener('pageshow', () => {
+    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        connectWebSocket();
+    }
+});
+window.addEventListener('pagehide', () => {
+    if (isStudentMicActive) {
+        toggleStudentMicrophone();
+    }
+});
 
 function updateSyncStatus(connected) {
     const el = document.getElementById('sync-status');
@@ -401,21 +465,27 @@ window.addEventListener('resize', handleOrientationOrResize);
 
 function renderPage(pageNum) {
     const doc = sessionState.doc_data;
-    document.getElementById('current-page-text').textContent = pageNum;
 
     if (!doc || !doc.pages || doc.pages.length === 0) {
         document.getElementById('slide-img').classList.add('hidden');
         document.getElementById('slide-card').classList.add('hidden');
         document.getElementById('waiting-notice').classList.remove('hidden');
         document.getElementById('total-page-text').textContent = "1";
+        document.getElementById('current-page-text').textContent = "1";
         return;
     }
 
-    const total = doc.total_pages;
+    const total = doc.total_pages || (doc.pages ? doc.pages.length : 1);
+    pageNum = parseInt(pageNum, 10) || 1;
+    if (pageNum < 1) pageNum = 1;
+    if (pageNum > total) pageNum = total;
+
+    document.getElementById('current-page-text').textContent = pageNum;
     document.getElementById('total-page-text').textContent = total;
     document.getElementById('waiting-notice').classList.add('hidden');
 
     const pageData = doc.pages[pageNum - 1];
+    if (!pageData) return;
 
     if (doc.mode === 'image') {
         const img = document.getElementById('slide-img');
@@ -594,6 +664,9 @@ function updateStudentAudioUI(micActive = null) {
 
 function handleIncomingAudioChunk(msg) {
     if (isStudentMuted || !msg) return;
+
+    // Chống vọng âm: Khi học sinh đang bật micro phát biểu, tạm dừng phát loa để tránh mic thu lại tiếng từ loa gây hú/vọng
+    if (isStudentMicActive) return;
 
     // Hiển thị nút bật tiếng nếu chưa được mở khoá trên điện thoại
     if (!audioUnlocked) {

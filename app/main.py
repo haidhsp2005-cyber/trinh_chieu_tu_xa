@@ -74,6 +74,7 @@ class ClassroomSession:
         }
 
 active_rooms: Dict[str, ClassroomSession] = {}
+current_active_teacher_room_id: str = None
 
 # ----------------- ROUTES GIAO DIỆN -----------------
 
@@ -307,22 +308,37 @@ async def remove_material_api(item_id: str):
 
 @app.websocket("/ws/{room_id}/{role}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
+    global current_active_teacher_room_id
     await websocket.accept()
 
     session = ensure_session_loaded(room_id)
     client_id = str(uuid.uuid4())[:8]
 
     if role == "teacher":
+        current_active_teacher_room_id = room_id
         session.teacher_ws = websocket
     else:
         session.students[client_id] = websocket
+
+    is_old_link = False
+    active_teacher_room = None
+    active_teacher_title = ""
+    if role == "student" and session.teacher_ws is None and current_active_teacher_room_id and current_active_teacher_room_id != room_id:
+        active_sess = active_rooms.get(current_active_teacher_room_id)
+        if active_sess and active_sess.teacher_ws is not None:
+            is_old_link = True
+            active_teacher_room = current_active_teacher_room_id
+            active_teacher_title = active_sess.title
 
     # Gửi trạng thái ban đầu cho máy mới vào
     await websocket.send_json({
         "type": "INIT_STATE",
         "client_id": client_id,
         "role": role,
-        "state": session.to_state_dict()
+        "state": session.to_state_dict(),
+        "is_old_link": is_old_link,
+        "active_teacher_room": active_teacher_room,
+        "active_teacher_title": active_teacher_title
     })
 
     # Báo cho giáo viên số lượng học sinh cập nhật
@@ -540,9 +556,11 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
                     except Exception:
                         pass
 
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, Exception):
         if role == "teacher":
             session.teacher_ws = None
+            if current_active_teacher_room_id == room_id:
+                current_active_teacher_room_id = None
         else:
             if client_id in session.students:
                 del session.students[client_id]
