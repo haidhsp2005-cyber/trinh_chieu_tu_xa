@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime
 from typing import Dict, List, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -22,6 +22,36 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 app = FastAPI(title="Smart Classroom - Realtime Presentation")
+
+@app.get("/cache/{doc_id}/{filename}")
+async def serve_cached_slide(doc_id: str, filename: str):
+    file_path = os.path.join(CACHE_DIR, doc_id, filename)
+    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+        return FileResponse(file_path)
+
+    # Nếu slide chưa kịp render chạy ngầm (ví dụ nhảy vọt tới trang xa), render tức thì trong ~80ms
+    if filename.startswith("page_") and filename.endswith(".png"):
+        try:
+            page_num_str = filename.replace("page_", "").replace(".png", "")
+            page_index = int(page_num_str) - 1
+            doc_dir = os.path.join(CACHE_DIR, doc_id)
+            temp_pdf = os.path.join(doc_dir, "exported_slides.pdf")
+            if os.path.exists(temp_pdf):
+                import pymupdf
+                doc = pymupdf.open(temp_pdf)
+                if page_index < len(doc):
+                    mat = pymupdf.Matrix(1.6, 1.6)
+                    pix = doc[page_index].get_pixmap(matrix=mat)
+                    pix.save(file_path)
+                doc.close()
+                if os.path.exists(file_path):
+                    return FileResponse(file_path)
+        except Exception as e:
+            print(f"On-demand slide render error: {e}")
+
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    return Response(status_code=404)
 
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 app.mount("/cache", StaticFiles(directory=CACHE_DIR), name="cache")

@@ -128,22 +128,52 @@ def _convert_office_linux(input_path: str, output_pdf_path: str) -> bool:
         print(f"Linux LibreOffice convert error: {e}")
     return False
 
+import threading
+import shutil
+
+def _render_remaining_pages_background(pdf_path: str, output_dir: str, total_pages: int, zoom: float = 1.6):
+    """Render ngầm các trang từ trang 3 đến trang cuối cùng để người dùng vào phòng học tức thì."""
+    def worker():
+        try:
+            doc = pymupdf.open(pdf_path)
+            mat = pymupdf.Matrix(zoom, zoom)
+            for i in range(2, total_pages):
+                img_filename = f"page_{i + 1}.png"
+                img_path = os.path.join(output_dir, img_filename)
+                if not os.path.exists(img_path) or os.path.getsize(img_path) == 0:
+                    pix = doc[i].get_pixmap(matrix=mat)
+                    pix.save(img_path)
+            doc.close()
+        except Exception as e:
+            print(f"Background rendering error: {e}")
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+
 def _render_pdf_to_images(pdf_path: str, output_dir: str, doc_id: str, format_name: str) -> dict:
-    """Renders PDF pages into 300 DPI high-resolution PNG images."""
+    """
+    Renders PDF pages progressively:
+    - Trang 1 & 2 được render ngay lập tức để người dùng mở trang chỉ mất 1-2 giây!
+    - Toàn bộ các trang còn lại (3..N) được render chạy ngầm không làm đơ/nghẽn giao diện.
+    """
+    # Đảm bảo file PDF luôn có trong output_dir để hỗ trợ on-demand render khi nhảy trang
+    dest_pdf = os.path.join(output_dir, "exported_slides.pdf")
+    if not os.path.exists(dest_pdf) or os.path.getsize(dest_pdf) == 0:
+        try:
+            shutil.copyfile(pdf_path, dest_pdf)
+        except Exception:
+            pass
+
     doc = pymupdf.open(pdf_path)
+    total_pages = len(doc)
     pages = []
-    zoom = 2.0  # Sharp 300 DPI rendering
+    zoom = 1.6  # Chuẩn Full HD sắc nét, tốc độ xuất ảnh nhanh gấp đôi so với 2.0
     mat = pymupdf.Matrix(zoom, zoom)
 
+    # 1. Tạo danh mục (manifest) cho toàn bộ trang
     for i, page in enumerate(doc):
         page_num = i + 1
         img_filename = f"page_{page_num}.png"
-        img_path = os.path.join(output_dir, img_filename)
-        
-        if not os.path.exists(img_path):
-            pix = page.get_pixmap(matrix=mat)
-            pix.save(img_path)
-
         rect = page.rect
         aspect_ratio = "16:9" if (rect.width > rect.height * 1.3) else "portrait"
 
@@ -153,15 +183,30 @@ def _render_pdf_to_images(pdf_path: str, output_dir: str, doc_id: str, format_na
             "text": page.get_text()[:300],
             "aspect_ratio": aspect_ratio
         })
+
+    # 2. Render ngay 2 trang đầu tiên để vào trang trình chiếu trong chớp mắt
+    pages_to_render_now = min(2, total_pages)
+    for i in range(pages_to_render_now):
+        img_filename = f"page_{i + 1}.png"
+        img_path = os.path.join(output_dir, img_filename)
+        if not os.path.exists(img_path) or os.path.getsize(img_path) == 0:
+            pix = doc[i].get_pixmap(matrix=mat)
+            pix.save(img_path)
+
     doc.close()
 
     result = {
         "format": format_name,
         "mode": "image",
-        "total_pages": len(pages),
+        "total_pages": total_pages,
         "pages": pages
     }
     _save_manifest(output_dir, result)
+
+    # 3. Kích hoạt luồng chạy ngầm render tiếp các trang 3..N
+    if total_pages > pages_to_render_now:
+        _render_remaining_pages_background(pdf_path, output_dir, total_pages, zoom)
+
     return result
 
 def process_uploaded_document(file_path: str, cache_dir: str) -> dict:

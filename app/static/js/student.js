@@ -497,6 +497,11 @@ function renderPage(pageNum) {
             setupCanvasResolution();
         };
         applyZoomAndFit();
+        // Tiền tải ngầm trang kế tiếp để khi Thầy/Cô chuyển trang là học sinh thấy ngay tức thì 0ms
+        if (doc.pages[pageNum]) {
+            const preImg = new Image();
+            preImg.src = doc.pages[pageNum].image_url;
+        }
     } else {
         document.getElementById('slide-img').classList.add('hidden');
         const card = document.getElementById('slide-card');

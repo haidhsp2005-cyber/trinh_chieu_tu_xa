@@ -239,6 +239,11 @@ function renderPage(pageNum) {
             setupCanvasResolution();
         };
         applyZoomAndFit();
+        // Tiền tải ngầm trang kế tiếp để khi bấm chuyển trang là hiển thị ngay tức thì 0ms
+        if (doc.pages[pageNum]) {
+            const preImg = new Image();
+            preImg.src = doc.pages[pageNum].image_url;
+        }
     } else {
         document.getElementById('slide-img').classList.add('hidden');
         const card = document.getElementById('slide-card');
@@ -978,6 +983,11 @@ function setupKeyboardNavigation() {
         // Nếu người dùng đang gõ trong ô nhập liệu (chat input, search...), bỏ qua các phím tắt
         const targetTag = e.target.tagName ? e.target.tagName.toLowerCase() : '';
         if (targetTag === 'input' || targetTag === 'textarea' || e.target.isContentEditable) {
+            return;
+        }
+
+        if (e.code === 'Space' || e.key === ' ') {
+            e.preventDefault();
             return;
         }
 
