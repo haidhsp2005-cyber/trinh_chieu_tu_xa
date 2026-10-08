@@ -14,6 +14,8 @@ function init() {
         sessionState = INITIAL_SESSION;
     }
 
+    updateStudentNameUI();
+
     if (sessionState && sessionState.doc_data) {
         if (sessionState.doc_data.format === 'pptx') {
             currentFitMode = 'page';
@@ -29,6 +31,12 @@ function init() {
         }
         if (sessionState.mic_active !== undefined) {
             updateStudentAudioUI(sessionState.mic_active);
+        }
+        if (sessionState.chat_messages) {
+            loadInitialStudentChatMessages(sessionState.chat_messages);
+        }
+        if (sessionState.speaking_student) {
+            handlePeerStudentMicStatus(sessionState.speaking_student.id, sessionState.speaking_student.name, true);
         }
     }
 
@@ -63,6 +71,7 @@ function connectWebSocket() {
 
         // 1. Initial State from Teacher
         if (msg.type === 'INIT_STATE') {
+            ownClientId = msg.client_id;
             sessionState = msg.state || {};
             if (sessionState && sessionState.doc_data && sessionState.doc_data.format === 'pptx') {
                 currentFitMode = 'page';
@@ -79,6 +88,12 @@ function connectWebSocket() {
             }
             if (sessionState.mic_active !== undefined) {
                 updateStudentAudioUI(sessionState.mic_active);
+            }
+            if (sessionState.chat_messages) {
+                loadInitialStudentChatMessages(sessionState.chat_messages);
+            }
+            if (sessionState.speaking_student) {
+                handlePeerStudentMicStatus(sessionState.speaking_student.id, sessionState.speaking_student.name, true);
             }
         }
 
@@ -168,6 +183,28 @@ function connectWebSocket() {
         // 11. Nhận gói âm thanh giọng nói trực tiếp từ Thầy/Cô
         else if (msg.type === 'AUDIO_CHUNK') {
             handleIncomingAudioChunk(msg);
+        }
+
+        // 12. Tin nhắn Trò chuyện / Hỏi đáp (Chat Realtime)
+        else if (msg.type === 'CHAT_MESSAGE') {
+            handleIncomingStudentChatMessage(msg.message);
+        }
+
+        // 13. Học sinh khác phát biểu (Micro trạng thái)
+        else if (msg.type === 'STUDENT_MIC_STATUS') {
+            handlePeerStudentMicStatus(msg.student_id, msg.student_name, msg.active);
+        }
+
+        // 14. Nhận âm thanh micro từ bạn học sinh khác phát biểu
+        else if (msg.type === 'STUDENT_AUDIO_CHUNK') {
+            if (msg.student_id !== ownClientId) {
+                handleIncomingAudioChunk(msg);
+            }
+        }
+
+        // 15. Giáo viên tắt micro học sinh cưỡng bức
+        else if (msg.type === 'FORCE_MUTE') {
+            handleForceMute();
         }
     };
 
@@ -606,8 +643,421 @@ function handleIncomingAudioChunk(msg) {
         console.warn("PCM audio decode/playback error:", e);
     }
 }
+
+// ----------------- TIỆN ÍCH CHAT & DANH TÍNH HỌC SINH -----------------
+let ownClientId = null;
+let isStudentChatOpen = false;
+let studentUnreadChatCount = 0;
+
+function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/[&<>"']/g, function(m) {
+        return {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        }[m];
+    });
+}
+
+function getStudentName() {
+    let name = localStorage.getItem('student_display_name');
+    if (!name || !name.trim()) {
+        const randId = Math.floor(1000 + Math.random() * 9000);
+        name = 'Học sinh ' + randId;
+        localStorage.setItem('student_display_name', name);
+    }
+    return name;
+}
+
+function updateStudentNameUI() {
+    const el = document.getElementById('display-student-name');
+    if (el) {
+        el.textContent = getStudentName();
+    }
+}
+
+function changeStudentNamePrompt() {
+    const currentName = getStudentName();
+    const newName = prompt("Nhập họ tên của bạn để hiển thị khi trao đổi / phát biểu:", currentName);
+    if (newName && newName.trim()) {
+        localStorage.setItem('student_display_name', newName.trim());
+        updateStudentNameUI();
+    }
+}
+
+function toggleStudentChat() {
+    const modal = document.getElementById('student-chat-modal');
+    if (!modal) return;
+
+    isStudentChatOpen = !isStudentChatOpen;
+    if (isStudentChatOpen) {
+        modal.classList.remove('hidden');
+        studentUnreadChatCount = 0;
+        updateStudentChatBadge();
+        const msgCont = document.getElementById('student-chat-messages');
+        if (msgCont) msgCont.scrollTop = msgCont.scrollHeight;
+        const input = document.getElementById('student-chat-input');
+        if (input) setTimeout(() => input.focus(), 100);
+    } else {
+        modal.classList.add('hidden');
+    }
+}
+
+function updateStudentChatBadge() {
+    const badge = document.getElementById('student-chat-badge');
+    if (!badge) return;
+    if (studentUnreadChatCount > 0 && !isStudentChatOpen) {
+        badge.textContent = studentUnreadChatCount > 99 ? '99+' : studentUnreadChatCount;
+        badge.classList.remove('hidden');
+    } else {
+        badge.classList.add('hidden');
+    }
+}
+
+function sendStudentChatMessage(e) {
+    if (e) e.preventDefault();
+    const input = document.getElementById('student-chat-input');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'CHAT_MESSAGE',
+            text: text,
+            sender: getStudentName()
+        }));
+        input.value = '';
+    } else {
+        alert("Chưa kết nối tới máy chủ. Vui lòng thử lại sau giây lát.");
+    }
+}
+
+function loadInitialStudentChatMessages(messages) {
+    if (!Array.isArray(messages)) return;
+    const cont = document.getElementById('student-chat-messages');
+    if (!cont) return;
+    const emptyHint = document.getElementById('student-chat-empty-hint');
+    if (messages.length > 0 && emptyHint) {
+        emptyHint.remove();
+    }
+    messages.forEach(msg => {
+        renderStudentChatMessageItem(msg);
+    });
+    cont.scrollTop = cont.scrollHeight;
+}
+
+function handleIncomingStudentChatMessage(msg) {
+    if (!msg) return;
+    const emptyHint = document.getElementById('student-chat-empty-hint');
+    if (emptyHint) emptyHint.remove();
+
+    renderStudentChatMessageItem(msg);
+
+    if (!isStudentChatOpen) {
+        studentUnreadChatCount++;
+        updateStudentChatBadge();
+    }
+}
+
+function renderStudentChatMessageItem(msg) {
+    const cont = document.getElementById('student-chat-messages');
+    if (!cont) return;
+
+    const isMe = msg.role === 'student' && msg.sender === getStudentName();
+    const isTeacher = msg.role === 'teacher';
+
+    const div = document.createElement('div');
+    div.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-0.5 text-xs`;
+
+    const senderDisplay = escapeHtml(msg.sender || (isTeacher ? 'Thầy/Cô' : 'Học sinh'));
+    const timeDisplay = escapeHtml(msg.time || '');
+    const textDisplay = escapeHtml(msg.text || '');
+
+    if (isTeacher) {
+        div.innerHTML = `
+            <div class="flex items-center space-x-1.5 px-1">
+                <span class="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 font-bold text-[10px] rounded border border-amber-500/40">
+                    <i class="fa-solid fa-chalkboard-user mr-1"></i>${senderDisplay}
+                </span>
+                <span class="text-[9px] text-slate-500">${timeDisplay}</span>
+            </div>
+            <div class="max-w-[85%] bg-amber-950/60 border border-amber-500/50 text-amber-100 rounded-2xl rounded-tl-sm px-3 py-2 shadow-sm leading-relaxed whitespace-pre-wrap break-words">
+                ${textDisplay}
+            </div>
+        `;
+    } else if (isMe) {
+        div.innerHTML = `
+            <div class="flex items-center space-x-1.5 px-1">
+                <span class="text-[9px] text-slate-500">${timeDisplay}</span>
+                <span class="text-[10px] font-semibold text-cyan-400">Bạn</span>
+            </div>
+            <div class="max-w-[85%] bg-cyan-600 text-white rounded-2xl rounded-tr-sm px-3 py-2 shadow-sm leading-relaxed whitespace-pre-wrap break-words">
+                ${textDisplay}
+            </div>
+        `;
+    } else {
+        div.innerHTML = `
+            <div class="flex items-center space-x-1.5 px-1">
+                <span class="text-[10px] font-semibold text-slate-300">${senderDisplay}</span>
+                <span class="text-[9px] text-slate-500">${timeDisplay}</span>
+            </div>
+            <div class="max-w-[85%] bg-slate-800 border border-slate-700 text-slate-200 rounded-2xl rounded-tl-sm px-3 py-2 shadow-sm leading-relaxed whitespace-pre-wrap break-words">
+                ${textDisplay}
+            </div>
+        `;
+    }
+
+    cont.appendChild(div);
+    cont.scrollTop = cont.scrollHeight;
+}
+
+// ----------------- HỌC SINH PHÁT BIỂU QUA MICROPHONE (16kHz PCM) -----------------
+let isStudentMicActive = false;
+let isStudentMicToggling = false;
+let studentMicStream = null;
+let studentMicContext = null;
+let studentMicScriptNode = null;
+let studentMicSourceNode = null;
+let studentMicMuteGain = null;
+
+function downsampleAudioBuffer(buffer, inputRate, outputRate) {
+    if (inputRate === outputRate) return buffer;
+    const ratio = inputRate / outputRate;
+    const newLength = Math.round(buffer.length / ratio);
+    const result = new Float32Array(newLength);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
+    while (offsetResult < result.length) {
+        const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+        let accum = 0, count = 0;
+        for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+            accum += buffer[i];
+            count++;
+        }
+        result[offsetResult] = count > 0 ? (accum / count) : 0;
+        offsetResult++;
+        offsetBuffer = nextOffsetBuffer;
+    }
+    return result;
+}
+
+function floatTo16BitPCM(float32Array) {
+    const int16Array = new Int16Array(float32Array.length);
+    for (let i = 0; i < float32Array.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32Array[i]));
+        int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    return int16Array;
+}
+
+function int16ToBase64(int16Array) {
+    const bytes = new Uint8Array(int16Array.buffer);
+    let binary = '';
+    const len = bytes.byteLength;
+    const chunkSize = 4096;
+    for (let i = 0; i < len; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunkSize, len)));
+    }
+    return btoa(binary);
+}
+
+function resetStudentMicUI() {
+    isStudentMicActive = false;
+    const btn = document.getElementById('btn-student-mic');
+    const icon = document.getElementById('student-mic-icon');
+    const text = document.getElementById('student-mic-text');
+    const pulse = document.getElementById('student-mic-pulse');
+
+    if (btn) {
+        btn.className = "px-2 sm:px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-full text-[10px] sm:text-[11px] font-bold flex items-center space-x-1 transition cursor-pointer";
+    }
+    if (icon) icon.className = "fa-solid fa-microphone-slash text-slate-400";
+    if (text) text.textContent = "Phát biểu";
+    if (pulse) pulse.classList.add('hidden');
+}
+
+async function toggleStudentMicrophone() {
+    if (isStudentMicToggling) return;
+    isStudentMicToggling = true;
+
+    const btn = document.getElementById('btn-student-mic');
+    const icon = document.getElementById('student-mic-icon');
+    const text = document.getElementById('student-mic-text');
+    const pulse = document.getElementById('student-mic-pulse');
+
+    try {
+        if (isStudentMicActive) {
+            // Tắt Micro học sinh
+            isStudentMicActive = false;
+
+            if (studentMicScriptNode) {
+                studentMicScriptNode.onaudioprocess = null;
+                try { studentMicScriptNode.disconnect(); } catch (e) {}
+                studentMicScriptNode = null;
+            }
+            if (studentMicSourceNode) {
+                try { studentMicSourceNode.disconnect(); } catch (e) {}
+                studentMicSourceNode = null;
+            }
+            if (studentMicMuteGain) {
+                try { studentMicMuteGain.disconnect(); } catch (e) {}
+                studentMicMuteGain = null;
+            }
+            if (studentMicStream) {
+                studentMicStream.getTracks().forEach(t => t.stop());
+                studentMicStream = null;
+            }
+            if (studentMicContext && studentMicContext.state !== 'closed') {
+                try { studentMicContext.close(); } catch (e) {}
+                studentMicContext = null;
+            }
+
+            resetStudentMicUI();
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'STUDENT_MIC_STATUS',
+                    active: false,
+                    sender: getStudentName()
+                }));
+            }
+        } else {
+            // Bật Micro: đổi UI phản hồi ngay lập tức
+            if (icon) icon.className = "fa-solid fa-spinner fa-spin text-amber-400";
+            if (text) text.textContent = "Đang mở mic...";
+
+            const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+            if (location.protocol !== 'https:' && !isLocal) {
+                alert("Không thể bật Micro qua HTTP (" + location.hostname + ") do trình duyệt chặn bảo mật.\n\n👉 Vui lòng sử dụng đường link HTTPS chính thức hoặc máy chủ localhost để được cấp quyền Micro.");
+                resetStudentMicUI();
+                return;
+            }
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("Trình duyệt không hỗ trợ API Micro. Vui lòng mở trang trên Google Chrome, Edge hoặc Safari.");
+                resetStudentMicUI();
+                return;
+            }
+
+            studentMicStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                },
+                video: false
+            });
+
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) {
+                alert("Trình duyệt không hỗ trợ Web Audio API.");
+                resetStudentMicUI();
+                return;
+            }
+
+            studentMicContext = new AudioCtx();
+            if (studentMicContext.state === 'suspended') {
+                await studentMicContext.resume();
+            }
+
+            const inSampleRate = studentMicContext.sampleRate;
+            studentMicSourceNode = studentMicContext.createMediaStreamSource(studentMicStream);
+            studentMicScriptNode = studentMicContext.createScriptProcessor(4096, 1, 1);
+
+            studentMicScriptNode.onaudioprocess = (e) => {
+                if (!isStudentMicActive) return;
+                const inputData = e.inputBuffer.getChannelData(0);
+
+                const downsampled = downsampleAudioBuffer(inputData, inSampleRate, 16000);
+                const pcm16 = floatTo16BitPCM(downsampled);
+                const base64Pcm = int16ToBase64(pcm16);
+
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'STUDENT_AUDIO_CHUNK',
+                        pcm: base64Pcm,
+                        sample_rate: 16000,
+                        sender: getStudentName()
+                    }));
+                }
+            };
+
+            // Tránh dội âm ra loa của chính học sinh
+            studentMicMuteGain = studentMicContext.createGain();
+            studentMicMuteGain.gain.value = 0;
+
+            studentMicSourceNode.connect(studentMicScriptNode);
+            studentMicScriptNode.connect(studentMicMuteGain);
+            studentMicMuteGain.connect(studentMicContext.destination);
+
+            isStudentMicActive = true;
+
+            if (btn) {
+                btn.className = "px-2 sm:px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-full text-[10px] sm:text-[11px] font-bold flex items-center space-x-1 transition shadow-lg shadow-rose-500/30 border border-rose-400 cursor-pointer animate-pulse";
+            }
+            if (icon) icon.className = "fa-solid fa-microphone text-white";
+            if (text) text.textContent = "Đang phát biểu";
+            if (pulse) pulse.classList.remove('hidden');
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'STUDENT_MIC_STATUS',
+                    active: true,
+                    sender: getStudentName()
+                }));
+            }
+
+            if (studentMicStream.getAudioTracks().length > 0) {
+                studentMicStream.getAudioTracks()[0].onended = () => {
+                    if (isStudentMicActive) toggleStudentMicrophone();
+                };
+            }
+        }
+    } catch (err) {
+        console.error("Lỗi cấp quyền Micro học sinh:", err);
+        resetStudentMicUI();
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            alert("Bạn đã chặn quyền truy cập Micro.\n\n👉 Hãy bấm vào biểu tượng Ổ khoá hoặc Cài đặt trang web trên thanh địa chỉ, chọn Cho phép (Allow) quyền Micro rồi thử lại!");
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+            alert("Không tìm thấy Micro trên thiết bị của bạn. Vui lòng kiểm tra lại thiết bị thu âm hoặc cắm tai nghe có mic.");
+        } else {
+            alert("Không thể khởi động Micro: " + (err.message || err.name));
+        }
+    } finally {
+        isStudentMicToggling = false;
+    }
+}
+
+function handleForceMute() {
+    if (isStudentMicActive) {
+        toggleStudentMicrophone();
+        alert("Thầy/Cô đã tắt micro của bạn để ổn định lớp học.");
+    }
+}
+
+function handlePeerStudentMicStatus(studentId, studentName, active) {
+    const notice = document.getElementById('peer-speaking-notice');
+    const nameEl = document.getElementById('peer-speaking-name');
+    if (!notice) return;
+
+    if (active && studentId !== ownClientId) {
+        if (nameEl) nameEl.textContent = studentName || 'Học sinh';
+        notice.classList.remove('hidden');
+    } else {
+        notice.classList.add('hidden');
+    }
+}
+
 window.unlockStudentAudio = unlockStudentAudio;
 window.toggleStudentAudioMute = toggleStudentAudioMute;
+window.toggleStudentMicrophone = toggleStudentMicrophone;
+window.toggleStudentChat = toggleStudentChat;
+window.sendStudentChatMessage = sendStudentChatMessage;
+window.changeStudentNamePrompt = changeStudentNamePrompt;
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

@@ -100,15 +100,30 @@
             </div>
         </div>
 
-        <div class="flex items-center space-x-2 sm:space-x-3 shrink-0">
+        <div class="flex items-center space-x-1.5 sm:space-x-2.5 shrink-0">
+            <!-- Nút bật/tắt Micro phát biểu của Học Sinh -->
+            <button id="btn-student-mic" onclick="toggleStudentMicrophone()" type="button" class="px-2 sm:px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-full text-[10px] sm:text-[11px] font-bold flex items-center space-x-1 transition cursor-pointer" title="Bật/Tắt Micro để phát biểu trả lời Thầy/Cô">
+                <i id="student-mic-icon" class="fa-solid fa-microphone-slash text-slate-400"></i>
+                <span id="student-mic-text" class="hidden sm:inline">Phát biểu</span>
+                <span id="student-mic-pulse" class="w-1.5 h-1.5 rounded-full bg-rose-400 hidden animate-ping"></span>
+            </button>
+
             <!-- Nút bật/tắt âm thanh giọng nói Thầy/Cô -->
             <button id="btn-student-audio-toggle" onclick="toggleStudentAudioMute()" class="hidden px-2 py-1 bg-emerald-950/80 border border-emerald-500/60 rounded-full text-[10px] text-emerald-300 font-bold items-center space-x-1.5 shrink-0 transition hover:bg-emerald-900/80 cursor-pointer" title="Bật/Tắt âm thanh giọng nói Thầy/Cô">
                 <i id="student-speaker-icon" class="fa-solid fa-volume-high text-emerald-400 animate-pulse"></i>
                 <span id="student-speaker-text" class="hidden sm:inline">Tiếng Thầy/Cô</span>
             </button>
-            <span id="sync-status" class="text-[10px] sm:text-[11px] text-emerald-400 font-semibold flex items-center space-x-1">
+
+            <!-- Nút mở Khung Chat / Hỏi đáp -->
+            <button id="btn-student-chat-toggle" onclick="toggleStudentChat()" type="button" class="relative px-2 sm:px-2.5 py-1 bg-cyan-950/80 border border-cyan-500/60 rounded-full text-[10px] sm:text-[11px] text-cyan-300 font-bold flex items-center space-x-1 transition hover:bg-cyan-900/80 cursor-pointer" title="Hỏi đáp & Trò chuyện">
+                <i class="fa-solid fa-comments text-cyan-400"></i>
+                <span class="hidden sm:inline">Hỏi đáp</span>
+                <span id="student-chat-badge" class="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center hidden animate-bounce">0</span>
+            </button>
+
+            <span id="sync-status" class="text-[10px] sm:text-[11px] text-emerald-400 font-semibold hidden md:flex items-center space-x-1">
                 <i class="fa-solid fa-cloud-arrow-down"></i>
-                <span class="hidden sm:inline">Đã đồng bộ</span>
+                <span>Đã đồng bộ</span>
             </span>
             <button onclick="toggleRotateOrLandscape()" class="p-1 sm:p-1.5 text-slate-300 hover:text-white bg-slate-800/80 rounded-lg transition" title="Xoay ngang màn hình / Tràn viền">
                 <i class="fa-solid fa-arrows-rotate text-xs"></i>
@@ -119,11 +134,58 @@
         </div>
     </header>
 
+    <!-- Thông báo bạn học sinh khác đang phát biểu -->
+    <div id="peer-speaking-notice" class="fixed top-12 left-1/2 -translate-x-1/2 z-40 bg-indigo-950/95 border border-indigo-400 text-white px-3.5 py-1.5 rounded-full shadow-xl flex items-center space-x-2 backdrop-blur hidden transition text-xs font-bold animate-pulse">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+        <i class="fa-solid fa-microphone text-emerald-400 text-xs"></i>
+        <span><span id="peer-speaking-name" class="text-cyan-300">Bạn A</span> đang phát biểu</span>
+    </div>
+
     <!-- Floating Audio Prompt for Mobile/Autoplay unlock -->
     <button id="mobile-unmute-prompt" onclick="unlockStudentAudio()" type="button" class="fixed top-14 left-1/2 -translate-x-1/2 z-[100] bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center space-x-2 border-2 border-emerald-300 backdrop-blur cursor-pointer hidden transition animate-bounce">
         <i class="fa-solid fa-volume-high text-white text-base"></i>
         <span class="text-xs sm:text-sm font-bold tracking-wide">Thầy/Cô đang nói • Chạm để BẬT TIẾNG</span>
     </button>
+
+    <!-- STUDENT CHAT MODAL / DRAWER -->
+    <div id="student-chat-modal" class="fixed inset-0 sm:inset-auto sm:bottom-12 sm:right-3 z-50 hidden flex flex-col sm:w-80 sm:h-[480px] bg-slate-900/98 sm:rounded-2xl border border-slate-700 shadow-2xl backdrop-blur-md overflow-hidden">
+        <!-- Chat Header -->
+        <div class="p-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between shrink-0">
+            <div class="flex items-center space-x-2">
+                <div class="w-6 h-6 rounded-lg bg-cyan-950 text-cyan-400 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-comments"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-white">Hỏi đáp & Trò chuyện</h4>
+                    <div class="flex items-center space-x-1">
+                        <span class="text-[10px] text-slate-400">Tên bạn:</span>
+                        <span id="display-student-name" onclick="changeStudentNamePrompt()" class="text-[10px] font-bold text-cyan-400 hover:underline cursor-pointer" title="Bấm để đổi tên">Học sinh</span>
+                        <i onclick="changeStudentNamePrompt()" class="fa-solid fa-pen text-[9px] text-slate-500 cursor-pointer"></i>
+                    </div>
+                </div>
+            </div>
+            <button onclick="toggleStudentChat()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition">
+                <i class="fa-solid fa-xmark text-sm"></i>
+            </button>
+        </div>
+
+        <!-- Chat Messages -->
+        <div id="student-chat-messages" class="flex-1 overflow-y-auto p-3 space-y-2.5 custom-scroll bg-slate-900/90 text-xs">
+            <div class="text-center py-6 text-slate-500 text-xs" id="student-chat-empty-hint">
+                <i class="fa-regular fa-comment-dots text-xl mb-1 block text-slate-600"></i>
+                Chưa có tin nhắn. Nhập câu hỏi gửi Thầy/Cô nhé!
+            </div>
+        </div>
+
+        <!-- Chat Input Form -->
+        <form onsubmit="sendStudentChatMessage(event)" class="p-2 bg-slate-950 border-t border-slate-800 flex items-center space-x-1.5 shrink-0">
+            <input type="text" id="student-chat-input" placeholder="Nhập câu hỏi hoặc tin nhắn..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500" autocomplete="off">
+            <button type="submit" class="px-3.5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1 shrink-0 cursor-pointer">
+                <span>Gửi</span>
+                <i class="fa-solid fa-paper-plane text-[10px]"></i>
+            </button>
+        </form>
+    </div>
 
     <!-- Main Presentation Viewing Stage (Edge-to-edge on mobile) -->
     <main class="flex-1 relative flex flex-col items-center justify-start p-0 sm:p-2 bg-slate-950 overflow-hidden">
@@ -226,6 +288,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/student.js?v=11"></script>
+    <script src="/static/js/student.js?v=12"></script>
 </body>
 </html>

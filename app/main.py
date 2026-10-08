@@ -4,6 +4,7 @@ import socket
 import json
 import uuid
 import asyncio
+from datetime import datetime
 from typing import Dict, List, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
@@ -51,6 +52,8 @@ class ClassroomSession:
         self.mic_active = False # Trạng thái bật/tắt micro giáo viên
         self.laser = {"x": -1, "y": -1, "active": False}
         self.drawings = []
+        self.chat_messages: List[Dict[str, Any]] = [] # Lịch sử tin nhắn phòng học
+        self.speaking_student: Dict[str, Any] = None # Học sinh đang bật micro phát biểu
         self.teacher_ws = None
         self.students: Dict[str, WebSocket] = {}
 
@@ -65,6 +68,8 @@ class ClassroomSession:
             "mic_active": self.mic_active,
             "laser": self.laser,
             "drawings": self.drawings,
+            "chat_messages": self.chat_messages[-50:],
+            "speaking_student": self.speaking_student,
             "student_count": len(self.students)
         }
 
@@ -410,11 +415,96 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
                     "active": active
                 })
 
-            # 6. Đồng bộ Phóng to Zoom và Cuộn trang PDF (Scroll & Zoom)
+            # 6. Tin nhắn Trò chuyện / Hỏi đáp (Chat Realtime 2 chiều)
+            elif msg_type == "CHAT_MESSAGE":
+                text = str(data.get("text", "")).strip()
+                if text:
+                    sender = str(data.get("sender", "Thầy/Cô" if role == "teacher" else "Học sinh")).strip()
+                    time_str = datetime.now().strftime("%H:%M")
+                    msg_obj = {
+                        "id": str(uuid.uuid4())[:8],
+                        "sender": sender,
+                        "role": role,
+                        "text": text,
+                        "time": time_str
+                    }
+                    session.chat_messages.append(msg_obj)
+                    if len(session.chat_messages) > 100:
+                        session.chat_messages.pop(0)
+
+                    await _broadcast_to_all(session, {
+                        "type": "CHAT_MESSAGE",
+                        "message": msg_obj
+                    })
+
+            # 7. Trạng thái Bật/Tắt Micro của Học sinh
+            elif msg_type == "STUDENT_MIC_STATUS":
+                active = bool(data.get("active", False))
+                sender = str(data.get("sender", "Học sinh")).strip()
+                if active:
+                    session.speaking_student = {"id": client_id, "name": sender}
+                else:
+                    if session.speaking_student and session.speaking_student.get("id") == client_id:
+                        session.speaking_student = None
+
+                await _broadcast_to_all(session, {
+                    "type": "STUDENT_MIC_STATUS",
+                    "student_id": client_id,
+                    "student_name": sender,
+                    "active": active
+                })
+
+            # 8. Truyền âm thanh Micro từ Học sinh tới Giáo viên và các bạn
+            elif msg_type == "STUDENT_AUDIO_CHUNK":
+                pcm = data.get("pcm")
+                if pcm:
+                    sender = str(data.get("sender", "Học sinh")).strip()
+                    sample_rate = data.get("sample_rate", 16000)
+                    chunk_payload = {
+                        "type": "STUDENT_AUDIO_CHUNK",
+                        "student_id": client_id,
+                        "student_name": sender,
+                        "pcm": pcm,
+                        "sample_rate": sample_rate
+                    }
+                    # Gửi tới Giáo viên để nghe học sinh phát biểu
+                    if session.teacher_ws:
+                        try:
+                            await session.teacher_ws.send_json(chunk_payload)
+                        except Exception:
+                            pass
+                    # Gửi tới các học sinh khác trong lớp
+                    for sid, s_ws in list(session.students.items()):
+                        if sid != client_id:
+                            try:
+                                await s_ws.send_json(chunk_payload)
+                            except Exception:
+                                pass
+
+            # 9. Giáo viên tắt micro của học sinh (Force Mute)
+            elif msg_type == "TEACHER_MUTE_STUDENT":
+                target_id = data.get("student_id")
+                if target_id and target_id in session.students:
+                    try:
+                        await session.students[target_id].send_json({
+                            "type": "FORCE_MUTE"
+                        })
+                    except Exception:
+                        pass
+                if session.speaking_student and session.speaking_student.get("id") == target_id:
+                    session.speaking_student = None
+                await _broadcast_to_all(session, {
+                    "type": "STUDENT_MIC_STATUS",
+                    "student_id": target_id,
+                    "student_name": "",
+                    "active": False
+                })
+
+            # 10. Đồng bộ Phóng to Zoom và Cuộn trang PDF (Scroll & Zoom)
             elif msg_type in ["ZOOM_SYNC", "SCROLL_SYNC"]:
                 await _broadcast_to_students(session, data)
 
-            # 6. WebRTC Signaling (Chia sẻ màn hình P2P độ nét cao)
+            # 11. WebRTC Signaling (Chia sẻ màn hình P2P độ nét cao)
             elif msg_type in ["WEBRTC_OFFER", "WEBRTC_ANSWER", "WEBRTC_CANDIDATE"]:
                 target_id = data.get("target")
                 if target_id and target_id in session.students:
@@ -438,6 +528,15 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
             if client_id in session.students:
                 del session.students[client_id]
 
+            if session.speaking_student and session.speaking_student.get("id") == client_id:
+                session.speaking_student = None
+                await _broadcast_to_all(session, {
+                    "type": "STUDENT_MIC_STATUS",
+                    "student_id": client_id,
+                    "student_name": "",
+                    "active": False
+                })
+
         if session.teacher_ws:
             try:
                 await session.teacher_ws.send_json({
@@ -457,3 +556,11 @@ async def _broadcast_to_students(session: ClassroomSession, payload: dict):
     for cid in disconnected:
         if cid in session.students:
             del session.students[cid]
+
+async def _broadcast_to_all(session: ClassroomSession, payload: dict):
+    if session.teacher_ws:
+        try:
+            await session.teacher_ws.send_json(payload)
+        except Exception:
+            session.teacher_ws = None
+    await _broadcast_to_students(session, payload)

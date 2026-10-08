@@ -112,19 +112,39 @@
             </button>
 
             <!-- Bật tắt Drawer Danh sách Slide -->
-            <button onclick="toggleSlideDrawer()" id="btn-drawer-toggle" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition" title="Xem danh sách tất cả các trang slide">
+            <button onclick="toggleSlideDrawer()" id="btn-drawer-toggle" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer" title="Xem danh sách tất cả các trang slide">
                 <i class="fa-solid fa-table-cells-large text-amber-400"></i>
                 <span class="hidden sm:inline">Danh sách Slide</span>
             </button>
 
+            <!-- Bật/Tắt Khung Chat & Hỏi đáp -->
+            <button onclick="toggleChatDrawer()" id="btn-chat-toggle" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition relative border border-slate-700 cursor-pointer" title="Hỏi đáp & Trò chuyện với học sinh">
+                <i class="fa-solid fa-comments text-cyan-400"></i>
+                <span class="hidden sm:inline">Hỏi đáp / Chat</span>
+                <span id="teacher-chat-badge" class="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center hidden animate-bounce">0</span>
+            </button>
+
             <!-- Fullscreen -->
-            <button onclick="toggleFullScreen()" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition" title="Toàn màn hình">
+            <button onclick="toggleFullScreen()" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer" title="Toàn màn hình">
                 <i class="fa-solid fa-expand"></i>
             </button>
         </div>
     </header>
 
-    <!-- Presentation Main Area with Optional Slide Drawer -->
+    <!-- Banner nổi khi Học sinh đang phát biểu qua Micro -->
+    <div id="student-speaking-banner" class="fixed top-16 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 border-2 border-indigo-500 text-white px-4 py-2 rounded-2xl shadow-2xl flex items-center space-x-3 backdrop-blur hidden transition-all animate-pulse">
+        <div class="flex items-center space-x-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+            <i class="fa-solid fa-microphone text-emerald-400 text-sm"></i>
+            <span class="text-xs font-bold"><span id="speaking-student-name" class="text-cyan-300 font-extrabold">Học sinh</span> đang phát biểu...</span>
+        </div>
+        <button onclick="forceMuteSpeakingStudent()" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white rounded-lg text-[11px] font-bold transition flex items-center space-x-1 shadow-md shadow-rose-600/30 cursor-pointer" title="Tắt micro của học sinh này">
+            <i class="fa-solid fa-microphone-slash text-[10px]"></i>
+            <span>Tắt mic HS</span>
+        </button>
+    </div>
+
+    <!-- Presentation Main Area with Optional Slide Drawer & Chat Drawer -->
     <div class="flex-1 flex overflow-hidden relative">
 
         <!-- Main Stage Container -->
@@ -218,6 +238,45 @@
             <!-- Slide list container -->
             <div id="drawer-slide-list" class="flex-1 overflow-y-auto p-3 space-y-2.5">
                 <!-- Dynamically generated slide cards -->
+            </div>
+        </aside>
+
+        <!-- Chat & Hỏi Đáp Drawer (Sidebar Trò chuyện Thầy & Trò) -->
+        <aside id="chat-drawer" class="w-80 sm:w-96 bg-slate-900 border-l border-slate-800 flex flex-col transition-all duration-300 z-30 shrink-0 hidden shadow-2xl">
+            <!-- Chat Header -->
+            <div class="p-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+                <div class="flex items-center space-x-2">
+                    <div class="w-7 h-7 rounded-lg bg-cyan-950 border border-cyan-500/40 text-cyan-400 flex items-center justify-center text-xs">
+                        <i class="fa-solid fa-comments"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xs font-bold text-slate-100 uppercase tracking-wider">Hỏi đáp & Trò chuyện</h3>
+                        <p class="text-[10px] text-slate-400">Tương tác trực tiếp với học sinh</p>
+                    </div>
+                </div>
+                <button onclick="toggleChatDrawer()" class="text-slate-400 hover:text-white text-xs p-1 rounded-lg hover:bg-slate-800 transition">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+
+            <!-- Chat Messages Container -->
+            <div id="teacher-chat-messages" class="flex-1 overflow-y-auto p-3 space-y-3 custom-scroll">
+                <!-- Injected messages -->
+                <div class="text-center py-6 text-slate-500 text-xs" id="chat-empty-hint">
+                    <i class="fa-regular fa-comment-dots text-2xl mb-1.5 block text-slate-600"></i>
+                    Chưa có tin nhắn nào. Đặt câu hỏi hoặc chào cả lớp!
+                </div>
+            </div>
+
+            <!-- Chat Input Area -->
+            <div class="p-2.5 border-t border-slate-800 bg-slate-950/80">
+                <form onsubmit="sendTeacherChatMessage(event)" class="flex items-center space-x-1.5">
+                    <input type="text" id="teacher-chat-input" placeholder="Gửi tin nhắn hoặc câu hỏi tới cả lớp..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" autocomplete="off">
+                    <button type="submit" class="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-xl text-xs font-bold transition shadow-md shadow-cyan-600/20 shrink-0 flex items-center space-x-1 cursor-pointer">
+                        <span>Gửi</span>
+                        <i class="fa-solid fa-paper-plane text-[10px]"></i>
+                    </button>
+                </form>
             </div>
         </aside>
 
@@ -379,6 +438,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/teacher.js?v=11"></script>
+    <script src="/static/js/teacher.js?v=12"></script>
 </body>
 </html>
