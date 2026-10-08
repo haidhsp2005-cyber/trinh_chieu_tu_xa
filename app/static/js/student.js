@@ -27,7 +27,8 @@ function init() {
         updateStudentNameUI();
 
         if (sessionState && sessionState.doc_data) {
-            if (sessionState.doc_data.format === 'pptx') {
+            const d = sessionState.doc_data;
+            if (d.format === 'pptx' || d.format === 'image' || (d.pages && d.pages[0] && d.pages[0].aspect_ratio === '16:9')) {
                 currentFitMode = 'page';
             }
             document.getElementById('room-title-text').textContent = sessionState.title || "Lớp học trực tuyến";
@@ -103,8 +104,11 @@ function connectWebSocket() {
         if (msg.type === 'INIT_STATE') {
             ownClientId = msg.client_id;
             sessionState = msg.state || {};
-            if (sessionState && sessionState.doc_data && sessionState.doc_data.format === 'pptx') {
-                currentFitMode = 'page';
+            if (sessionState && sessionState.doc_data) {
+                const d = sessionState.doc_data;
+                if (d.format === 'pptx' || d.format === 'image' || (d.pages && d.pages[0] && d.pages[0].aspect_ratio === '16:9')) {
+                    currentFitMode = 'page';
+                }
             }
             document.getElementById('room-title-text').textContent = sessionState.title || "Lớp học trực tuyến";
             document.title = sessionState.title || "Lớp học trực tuyến";

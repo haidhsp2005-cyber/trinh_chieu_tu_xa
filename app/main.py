@@ -26,8 +26,9 @@ app = FastAPI(title="Smart Classroom - Realtime Presentation")
 @app.get("/cache/{doc_id}/{filename}")
 async def serve_cached_slide(doc_id: str, filename: str):
     file_path = os.path.join(CACHE_DIR, doc_id, filename)
+    headers = {"Cache-Control": "public, max-age=86400"}
     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-        return FileResponse(file_path)
+        return FileResponse(file_path, headers=headers)
 
     # Nếu slide chưa kịp render chạy ngầm (ví dụ nhảy vọt tới trang xa), render tức thì trong ~80ms
     if filename.startswith("page_") and filename.endswith(".png"):
@@ -36,21 +37,28 @@ async def serve_cached_slide(doc_id: str, filename: str):
             page_index = int(page_num_str) - 1
             doc_dir = os.path.join(CACHE_DIR, doc_id)
             temp_pdf = os.path.join(doc_dir, "exported_slides.pdf")
+            if not os.path.exists(temp_pdf):
+                candidates = [os.path.join(doc_dir, f) for f in os.listdir(doc_dir) if f.endswith(".pdf")]
+                if candidates:
+                    temp_pdf = candidates[0]
+
             if os.path.exists(temp_pdf):
                 import pymupdf
                 doc = pymupdf.open(temp_pdf)
                 if page_index < len(doc):
                     mat = pymupdf.Matrix(1.6, 1.6)
                     pix = doc[page_index].get_pixmap(matrix=mat)
-                    pix.save(file_path)
+                    tmp_file_path = f"{file_path}.tmp"
+                    pix.save(tmp_file_path)
+                    os.replace(tmp_file_path, file_path)
                 doc.close()
                 if os.path.exists(file_path):
-                    return FileResponse(file_path)
+                    return FileResponse(file_path, headers=headers)
         except Exception as e:
             print(f"On-demand slide render error: {e}")
 
     if os.path.exists(file_path):
-        return FileResponse(file_path)
+        return FileResponse(file_path, headers=headers)
     return Response(status_code=404)
 
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
@@ -232,8 +240,8 @@ async def upload_material(
     grade: str = Form("10")
 ):
     ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in [".pdf", ".pptx", ".ppt", ".docx", ".doc"]:
-        raise HTTPException(status_code=400, detail="Chỉ hỗ trợ file PDF, PPTX, DOCX")
+    if ext not in [".pdf", ".pptx", ".ppt", ".docx", ".doc", ".png", ".jpg", ".jpeg", ".webp"]:
+        raise HTTPException(status_code=400, detail="Hỗ trợ file PDF, PPTX, DOCX, hình ảnh (PNG, JPG)")
 
     doc_uuid = str(uuid.uuid4())[:8]
     safe_name = f"{doc_uuid}_{file.filename}"

@@ -21,8 +21,11 @@ function init() {
         currentSession = INITIAL_SESSION;
     }
 
-    if (currentSession && currentSession.doc_data && currentSession.doc_data.format === 'pptx') {
-        fitMode = 'page';
+    if (currentSession && currentSession.doc_data) {
+        const d = currentSession.doc_data;
+        if (d.format === 'pptx' || d.format === 'image' || (d.pages && d.pages[0] && d.pages[0].aspect_ratio === '16:9')) {
+            fitMode = 'page';
+        }
     }
 
     setupCanvasResolution();

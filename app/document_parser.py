@@ -142,7 +142,9 @@ def _render_remaining_pages_background(pdf_path: str, output_dir: str, total_pag
                 img_path = os.path.join(output_dir, img_filename)
                 if not os.path.exists(img_path) or os.path.getsize(img_path) == 0:
                     pix = doc[i].get_pixmap(matrix=mat)
-                    pix.save(img_path)
+                    tmp_path = f"{img_path}.tmp"
+                    pix.save(tmp_path)
+                    os.replace(tmp_path, img_path)
             doc.close()
         except Exception as e:
             print(f"Background rendering error: {e}")
@@ -152,17 +154,18 @@ def _render_remaining_pages_background(pdf_path: str, output_dir: str, total_pag
 
 def _render_pdf_to_images(pdf_path: str, output_dir: str, doc_id: str, format_name: str) -> dict:
     """
-    Renders PDF pages progressively:
+    Renders PDF / Office / converted document pages progressively:
     - Trang 1 & 2 được render ngay lập tức để người dùng mở trang chỉ mất 1-2 giây!
     - Toàn bộ các trang còn lại (3..N) được render chạy ngầm không làm đơ/nghẽn giao diện.
+    - Áp dụng cho TẤT CẢ các định dạng (PDF, PPTX, DOCX...)
     """
-    # Đảm bảo file PDF luôn có trong output_dir để hỗ trợ on-demand render khi nhảy trang
     dest_pdf = os.path.join(output_dir, "exported_slides.pdf")
     if not os.path.exists(dest_pdf) or os.path.getsize(dest_pdf) == 0:
-        try:
-            shutil.copyfile(pdf_path, dest_pdf)
-        except Exception:
-            pass
+        if os.path.abspath(pdf_path) != os.path.abspath(dest_pdf):
+            try:
+                shutil.copyfile(pdf_path, dest_pdf)
+            except Exception:
+                pass
 
     doc = pymupdf.open(pdf_path)
     total_pages = len(doc)
@@ -170,7 +173,7 @@ def _render_pdf_to_images(pdf_path: str, output_dir: str, doc_id: str, format_na
     zoom = 1.6  # Chuẩn Full HD sắc nét, tốc độ xuất ảnh nhanh gấp đôi so với 2.0
     mat = pymupdf.Matrix(zoom, zoom)
 
-    # 1. Tạo danh mục (manifest) cho toàn bộ trang
+    # 1. Tạo danh mục (manifest) siêu tốc mà không đọc text toàn trang gây nghẽn
     for i, page in enumerate(doc):
         page_num = i + 1
         img_filename = f"page_{page_num}.png"
@@ -180,7 +183,7 @@ def _render_pdf_to_images(pdf_path: str, output_dir: str, doc_id: str, format_na
         pages.append({
             "page_num": page_num,
             "image_url": f"/cache/{doc_id}/{img_filename}",
-            "text": page.get_text()[:300],
+            "text": f"Trang {page_num}",
             "aspect_ratio": aspect_ratio
         })
 
@@ -191,7 +194,9 @@ def _render_pdf_to_images(pdf_path: str, output_dir: str, doc_id: str, format_na
         img_path = os.path.join(output_dir, img_filename)
         if not os.path.exists(img_path) or os.path.getsize(img_path) == 0:
             pix = doc[i].get_pixmap(matrix=mat)
-            pix.save(img_path)
+            tmp_path = f"{img_path}.tmp"
+            pix.save(tmp_path)
+            os.replace(tmp_path, img_path)
 
     doc.close()
 
@@ -205,13 +210,49 @@ def _render_pdf_to_images(pdf_path: str, output_dir: str, doc_id: str, format_na
 
     # 3. Kích hoạt luồng chạy ngầm render tiếp các trang 3..N
     if total_pages > pages_to_render_now:
-        _render_remaining_pages_background(pdf_path, output_dir, total_pages, zoom)
+        target_render_pdf = dest_pdf if os.path.exists(dest_pdf) else pdf_path
+        _render_remaining_pages_background(target_render_pdf, output_dir, total_pages, zoom)
 
+    return result
+
+def _process_image(file_path: str, output_dir: str, doc_id: str) -> dict:
+    """Xử lý hình ảnh đơn lẻ (PNG, JPG, JPEG, WEBP) mở tức thì làm slide."""
+    manifest = _load_cached_manifest(output_dir)
+    if manifest:
+        return manifest
+    img_filename = "page_1.png"
+    dest_img = os.path.join(output_dir, img_filename)
+    try:
+        with Image.open(file_path) as img:
+            w, h = img.size
+            aspect_ratio = "16:9" if (w > h * 1.3) else "portrait"
+            if img.mode != 'RGB':
+                rgb_img = img.convert('RGB')
+                rgb_img.save(dest_img, "PNG")
+            else:
+                img.save(dest_img, "PNG")
+    except Exception as e:
+        print(f"Image parse error: {e}")
+        shutil.copyfile(file_path, dest_img)
+        aspect_ratio = "16:9"
+
+    result = {
+        "format": "image",
+        "mode": "image",
+        "total_pages": 1,
+        "pages": [{
+            "page_num": 1,
+            "image_url": f"/cache/{doc_id}/{img_filename}",
+            "text": "Hình ảnh",
+            "aspect_ratio": aspect_ratio
+        }]
+    }
+    _save_manifest(output_dir, result)
     return result
 
 def process_uploaded_document(file_path: str, cache_dir: str) -> dict:
     """
-    Parses PDF, DOCX, or PPTX into a structured slide presentation format.
+    Parses PDF, DOCX, PPTX, or Images into a structured slide presentation format.
     Priority:
     - High-fidelity visual images (PPTX / DOCX / PDF converted to high-res slide images)
     - Fallback: structured text cards
@@ -231,6 +272,8 @@ def process_uploaded_document(file_path: str, cache_dir: str) -> dict:
         return _process_pptx(file_path, output_dir, doc_id)
     elif ext in [".docx", ".doc"]:
         return _process_docx(file_path, output_dir, doc_id)
+    elif ext in [".png", ".jpg", ".jpeg", ".webp"]:
+        return _process_image(file_path, output_dir, doc_id)
     else:
         try:
             return _process_pptx(file_path, output_dir, doc_id)
@@ -309,7 +352,7 @@ def _process_docx(file_path: str, output_dir: str, doc_id: str) -> dict:
         return manifest
 
     # 2. High-fidelity Microsoft Word COM conversion (Windows)
-    temp_pdf = os.path.join(output_dir, "exported_doc.pdf")
+    temp_pdf = os.path.join(output_dir, "exported_slides.pdf")
     converted = False
     if os.name == 'nt':
         converted = _convert_docx_to_pdf_com(file_path, temp_pdf)
