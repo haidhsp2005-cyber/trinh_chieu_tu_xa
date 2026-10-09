@@ -518,6 +518,43 @@ function handleOrientationOrResize() {
 window.addEventListener('orientationchange', handleOrientationOrResize);
 window.addEventListener('resize', handleOrientationOrResize);
 
+// ----------------- CACHE & PRELOAD SLIDES (0ms Chuyển Trang) -----------------
+const slideImageCache = new Map();
+
+function preloadSlideImage(url) {
+    if (!url || slideImageCache.has(url)) return;
+    const img = new Image();
+    img.src = url;
+    slideImageCache.set(url, img);
+}
+
+function preloadSlidesAround(pageNum, doc) {
+    if (!doc || !doc.pages || doc.mode !== 'image') return;
+    const total = doc.pages.length;
+    // 1. Ưu tiên cao nhất: 3 trang tiếp theo
+    for (let i = 1; i <= 3; i++) {
+        const idx = pageNum - 1 + i;
+        if (idx < total && doc.pages[idx] && doc.pages[idx].image_url) {
+            preloadSlideImage(doc.pages[idx].image_url);
+        }
+    }
+    // 2. Ưu tiên kế: 2 trang phía trước (đề phòng quay lại)
+    for (let i = 1; i <= 2; i++) {
+        const idx = pageNum - 1 - i;
+        if (idx >= 0 && doc.pages[idx] && doc.pages[idx].image_url) {
+            preloadSlideImage(doc.pages[idx].image_url);
+        }
+    }
+    // 3. Tải ngầm toàn bộ bài giảng trong nền để chuyển bất kỳ slide nào cũng 0ms
+    setTimeout(() => {
+        doc.pages.forEach(p => {
+            if (p && p.image_url) {
+                preloadSlideImage(p.image_url);
+            }
+        });
+    }, 300);
+}
+
 // ----------------- RENDER SLIDE -----------------
 
 function renderPage(pageNum) {
@@ -546,19 +583,52 @@ function renderPage(pageNum) {
 
     if (doc.mode === 'image') {
         const img = document.getElementById('slide-img');
-        img.src = pageData.image_url;
-        img.classList.remove('hidden');
-        document.getElementById('slide-card').classList.add('hidden');
-        img.onload = () => {
+        const targetUrl = pageData.image_url;
+
+        // Nếu ảnh đã sẵn sàng trong cache, hoán đổi tức thì trong 0ms không chớp nháy
+        const cachedImg = slideImageCache.get(targetUrl);
+        if (cachedImg && cachedImg.complete && cachedImg.naturalWidth > 0) {
+            img.src = targetUrl;
+            img.classList.remove('hidden');
+            document.getElementById('slide-card').classList.add('hidden');
             applyZoomAndFit();
             setupCanvasResolution();
-        };
-        applyZoomAndFit();
-        // Tiền tải ngầm trang kế tiếp để khi Thầy/Cô chuyển trang là học sinh thấy ngay tức thì 0ms
-        if (doc.pages[pageNum]) {
-            const preImg = new Image();
-            preImg.src = doc.pages[pageNum].image_url;
+        } else {
+            // Nếu chưa xong, tiếp tục giữ ảnh cũ hoặc gắn onload mượt mà
+            const preImg = cachedImg || new Image();
+            if (!slideImageCache.has(targetUrl)) {
+                slideImageCache.set(targetUrl, preImg);
+                preImg.src = targetUrl;
+            }
+            preImg.onload = () => {
+                if (sessionState.current_page === pageNum) {
+                    img.src = targetUrl;
+                    img.classList.remove('hidden');
+                    document.getElementById('slide-card').classList.add('hidden');
+                    applyZoomAndFit();
+                    setupCanvasResolution();
+                }
+            };
+            if (preImg.complete && preImg.naturalWidth > 0) {
+                img.src = targetUrl;
+                img.classList.remove('hidden');
+                document.getElementById('slide-card').classList.add('hidden');
+                applyZoomAndFit();
+                setupCanvasResolution();
+            } else {
+                img.src = targetUrl;
+                img.classList.remove('hidden');
+                document.getElementById('slide-card').classList.add('hidden');
+                img.onload = () => {
+                    applyZoomAndFit();
+                    setupCanvasResolution();
+                };
+            }
         }
+
+        applyZoomAndFit();
+        // Tiền tải ngầm các trang tiếp theo và toàn bộ bài giảng
+        preloadSlidesAround(pageNum, doc);
     } else {
         document.getElementById('slide-img').classList.add('hidden');
         const card = document.getElementById('slide-card');

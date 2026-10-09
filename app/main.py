@@ -27,7 +27,7 @@ app = FastAPI(title="Smart Classroom - Realtime Presentation")
 async def serve_cached_slide(doc_id: str, filename: str):
     import urllib.parse
     decoded_doc_id = urllib.parse.unquote(doc_id)
-    headers = {"Cache-Control": "public, max-age=86400"}
+    headers = {"Cache-Control": "public, max-age=31536000, immutable"}
 
     # 1. Kiểm tra file đã có sẵn
     for cid in [doc_id, decoded_doc_id]:
@@ -61,7 +61,7 @@ async def serve_cached_slide(doc_id: str, filename: str):
                     target_file = os.path.join(doc_dir, filename)
                     if page_index < len(doc):
                         mat = pymupdf.Matrix(1.6, 1.6)
-                        pix = doc[page_index].get_pixmap(matrix=mat)
+                        pix = doc[page_index].get_pixmap(matrix=mat, alpha=False)
                         tmp_file_path = f"{target_file}.tmp.png"
                         pix.save(tmp_file_path, output="png")
                         os.replace(tmp_file_path, target_file)

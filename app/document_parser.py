@@ -145,22 +145,21 @@ def _get_clean_doc_id(file_path: str) -> str:
     return f"{clean}_{ext}"
 
 def _render_remaining_pages_background(pdf_path: str, output_dir: str, total_pages: int, zoom: float = 1.6):
-    """Render ngầm nhẹ nhàng tối đa 4 trang kế tiếp (không bao giờ render hàng trăm trang cùng lúc làm tràn RAM)."""
+    """Render ngầm nhẹ nhàng tuần tự tất cả các trang còn lại để khi lật slide luôn có sẵn ảnh tức thì."""
     def worker():
         try:
             doc = pymupdf.open(pdf_path)
             mat = pymupdf.Matrix(zoom, zoom)
-            limit_pages = min(total_pages, 6)
-            for i in range(2, limit_pages):
+            for i in range(2, total_pages):
                 img_filename = f"page_{i + 1}.png"
                 img_path = os.path.join(output_dir, img_filename)
                 if not os.path.exists(img_path) or os.path.getsize(img_path) == 0:
-                    pix = doc[i].get_pixmap(matrix=mat)
+                    pix = doc[i].get_pixmap(matrix=mat, alpha=False)
                     tmp_path = f"{img_path}.tmp.png"
                     pix.save(tmp_path, output="png")
                     os.replace(tmp_path, img_path)
                     del pix
-                time.sleep(0.05)  # Nhường CPU cho luồng chính
+                time.sleep(0.01)  # Nhường CPU cho luồng chính
             doc.close()
             del doc
             gc.collect()
@@ -212,7 +211,7 @@ def _render_pdf_to_images(pdf_path: str, output_dir: str, doc_id: str, format_na
         img_filename = f"page_{i + 1}.png"
         img_path = os.path.join(output_dir, img_filename)
         if not os.path.exists(img_path) or os.path.getsize(img_path) == 0:
-            pix = doc[i].get_pixmap(matrix=mat)
+            pix = doc[i].get_pixmap(matrix=mat, alpha=False)
             tmp_path = f"{img_path}.tmp.png"
             pix.save(tmp_path, output="png")
             os.replace(tmp_path, img_path)
