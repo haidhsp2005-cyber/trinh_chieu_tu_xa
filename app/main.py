@@ -114,6 +114,8 @@ class ClassroomSession:
         self.teacher_ws = None
         self.students: Dict[str, WebSocket] = {}
         self.is_active = False # True khi giáo viên đang mở phòng trình chiếu
+        self.chat_enabled = False # Mặc định tắt khung chat khi trình chiếu, giáo viên mở thì học sinh mới chat được
+        self.student_mic_allowed = False # Mặc định tắt hết micro học sinh khi trình chiếu
 
     def to_state_dict(self):
         return {
@@ -129,7 +131,9 @@ class ClassroomSession:
             "chat_messages": self.chat_messages[-50:],
             "speaking_student": self.speaking_student,
             "student_count": len(self.students),
-            "is_active": self.is_active
+            "is_active": self.is_active,
+            "chat_enabled": self.chat_enabled,
+            "student_mic_allowed": self.student_mic_allowed
         }
 
 active_rooms: Dict[str, ClassroomSession] = {}
@@ -413,6 +417,15 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
         current_active_teacher_room_id = room_id
         session.teacher_ws = websocket
         session.is_active = True
+        session.student_mic_allowed = False # Mặc định tắt hết micro học sinh khi trình chiếu
+        session.chat_enabled = False # Mặc định tắt khung chat khi trình chiếu
+        session.speaking_student = None
+        # Tắt toàn bộ mic của học sinh nếu có
+        for sid, s_ws in list(session.students.items()):
+            try:
+                await s_ws.send_json({"type": "FORCE_MUTE", "mute_all": True})
+            except Exception:
+                pass
         # Báo cho các học sinh đang trong phòng rằng giáo viên đã kết nối và đang trình chiếu
         await _broadcast_to_students(session, {
             "type": "TEACHER_STARTED_SESSION",
@@ -543,8 +556,29 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
                     "active": active
                 })
 
-            # 6. Tin nhắn Trò chuyện / Hỏi đáp (Chat Realtime 2 chiều)
+            # 6. Bật/Tắt Khung Chat cho Học sinh (Do Giáo viên điều khiển)
+            elif msg_type == "TOGGLE_CHAT_LOCK":
+                if role == "teacher":
+                    new_val = data.get("enabled")
+                    if new_val is None:
+                        session.chat_enabled = not session.chat_enabled
+                    else:
+                        session.chat_enabled = bool(new_val)
+                    await _broadcast_to_all(session, {
+                        "type": "CHAT_LOCK_STATUS",
+                        "chat_enabled": session.chat_enabled
+                    })
+
+            # 7. Tin nhắn Trò chuyện / Hỏi đáp (Chat Realtime 2 chiều)
             elif msg_type == "CHAT_MESSAGE":
+                if role == "student" and not session.chat_enabled:
+                    # Khung chat đang bị khóa đối với học sinh
+                    await websocket.send_json({
+                        "type": "CHAT_LOCK_STATUS",
+                        "chat_enabled": False,
+                        "notice": "Thầy/Cô đang tạm khóa khung chat."
+                    })
+                    continue
                 text = str(data.get("text", "")).strip()
                 if text:
                     sender = str(data.get("sender", "Thầy/Cô" if role == "teacher" else "Học sinh")).strip()
@@ -565,10 +599,39 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
                         "message": msg_obj
                     })
 
-            # 7. Trạng thái Bật/Tắt Micro của Học sinh
+            # 7b. Bật/Tắt Quyền Micro Học sinh (Mặc định: TẮT khi trình chiếu)
+            elif msg_type == "TOGGLE_STUDENT_MIC_LOCK":
+                if role == "teacher":
+                    new_val = data.get("allowed")
+                    if new_val is None:
+                        session.student_mic_allowed = not session.student_mic_allowed
+                    else:
+                        session.student_mic_allowed = bool(new_val)
+                    if not session.student_mic_allowed:
+                        session.speaking_student = None
+                        for sid, s_ws in list(session.students.items()):
+                            try:
+                                await s_ws.send_json({"type": "FORCE_MUTE", "mute_all": True})
+                            except Exception:
+                                pass
+                    await _broadcast_to_all(session, {
+                        "type": "STUDENT_MIC_LOCK_STATUS",
+                        "allowed": session.student_mic_allowed
+                    })
+
+            # 8. Trạng thái Bật/Tắt Micro của Học sinh
             elif msg_type == "STUDENT_MIC_STATUS":
                 active = bool(data.get("active", False))
                 sender = str(data.get("sender", "Học sinh")).strip()
+
+                if active and not session.student_mic_allowed:
+                    # Micro học sinh đang bị tắt/khóa bởi Thầy/Cô
+                    await websocket.send_json({
+                        "type": "FORCE_MUTE",
+                        "not_allowed": True
+                    })
+                    continue
+
                 if active:
                     session.speaking_student = {"id": client_id, "name": sender}
                 else:
@@ -582,8 +645,10 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
                     "active": active
                 })
 
-            # 8. Truyền âm thanh Micro từ Học sinh tới Giáo viên và các bạn
+            # 9. Truyền âm thanh Micro từ Học sinh tới Giáo viên và các bạn
             elif msg_type == "STUDENT_AUDIO_CHUNK":
+                if not session.student_mic_allowed:
+                    continue
                 pcm = data.get("pcm")
                 if pcm:
                     sender = str(data.get("sender", "Học sinh")).strip()

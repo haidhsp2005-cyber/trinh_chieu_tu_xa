@@ -49,15 +49,23 @@ function init() {
     if (currentSession && currentSession.speaking_student) {
         handleStudentMicStatus(currentSession.speaking_student.id, currentSession.speaking_student.name, true);
     }
+
+    updateChatLockUI(currentSession ? !!currentSession.chat_enabled : false);
+    updateStudentMicLockUI(currentSession ? !!currentSession.student_mic_allowed : false);
+
+    // Mặc định ban đầu là chế độ chuột, tắt chặn cảm ứng vẽ
+    setTool('cursor');
 }
 
 function setupCanvasResolution() {
     if (!stageWrapper || !canvas) return;
     const rect = stageWrapper.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-    if (currentSession.drawings) {
-        redrawAllStrokes(currentSession.drawings);
+    if (rect.width > 0 && rect.height > 0) {
+        canvas.width = Math.round(rect.width);
+        canvas.height = Math.round(rect.height);
+        if (currentSession && currentSession.drawings) {
+            redrawAllStrokes(currentSession.drawings);
+        }
     }
 }
 
@@ -86,9 +94,17 @@ function connectWebSocket() {
             if (msg.state && msg.state.speaking_student) {
                 handleStudentMicStatus(msg.state.speaking_student.id, msg.state.speaking_student.name, true);
             }
+            if (msg.state) {
+                updateChatLockUI(!!msg.state.chat_enabled);
+                updateStudentMicLockUI(!!msg.state.student_mic_allowed);
+            }
         } else if (msg.type === 'STUDENT_COUNT') {
             const el = document.getElementById('student-counter');
             if (el) el.textContent = msg.count;
+        } else if (msg.type === 'CHAT_LOCK_STATUS') {
+            updateChatLockUI(msg.chat_enabled);
+        } else if (msg.type === 'STUDENT_MIC_LOCK_STATUS') {
+            updateStudentMicLockUI(msg.allowed);
         } else if (msg.type === 'CHAT_MESSAGE') {
             handleIncomingChatMessage(msg.message);
         } else if (msg.type === 'STUDENT_MIC_STATUS') {
@@ -393,87 +409,150 @@ function setTool(tool) {
     ['cursor', 'laser', 'pen', 'highlighter'].forEach(t => {
         const btn = document.getElementById(`tool-${t}`);
         if (btn) {
-            btn.className = "px-3 py-1.5 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white flex items-center space-x-1.5";
+            btn.className = "px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white flex items-center space-x-1 sm:space-x-1.5";
         }
     });
 
     const activeBtn = document.getElementById(`tool-${tool}`);
     if (activeBtn) {
-        activeBtn.className = "px-3 py-1.5 rounded-xl text-xs font-bold transition bg-blue-600 text-white flex items-center space-x-1.5 shadow";
+        activeBtn.className = "px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition bg-blue-600 text-white flex items-center space-x-1 sm:space-x-1.5 shadow-md shadow-blue-600/30 ring-1 ring-blue-400";
+    }
+
+    if (canvas) {
+        if (tool === 'cursor') {
+            canvas.style.pointerEvents = 'none';
+            canvas.style.touchAction = 'auto';
+            canvas.style.cursor = 'default';
+        } else {
+            canvas.style.pointerEvents = 'auto';
+            canvas.style.touchAction = 'none';
+            canvas.style.cursor = 'crosshair';
+        }
     }
 
     if (tool !== 'laser') {
-        laserDot.classList.add('hidden');
+        if (laserDot) laserDot.classList.add('hidden');
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'LASER_MOVE', active: false }));
         }
     }
 }
+window.setTool = setTool;
 
 let lastLaserTime = 0;
 function setupCanvasEvents() {
-    stageWrapper.addEventListener('mousemove', (e) => {
-        if (currentTool === 'laser') {
-            const rect = stageWrapper.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+    if (!canvas || !stageWrapper) return;
 
+    // Laser pointer helper (Hỗ trợ cả di chuột và ngón tay lướt trên điện thoại)
+    function updateLaser(clientX, clientY, active) {
+        if (currentTool !== 'laser') return;
+        const rect = stageWrapper.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        const x = clientX - rect.left;
+        const y = clientY - rect.top;
+
+        if (active) {
             laserDot.style.left = `${x}px`;
             laserDot.style.top = `${y}px`;
             laserDot.classList.remove('hidden');
-
-            const now = Date.now();
-            if (now - lastLaserTime > 30) {
-                lastLaserTime = now;
-                const normX = x / rect.width;
-                const normY = y / rect.height;
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({
-                        type: 'LASER_MOVE',
-                        x: normX,
-                        y: normY,
-                        active: true
-                    }));
-                }
-            }
-        }
-    });
-
-    stageWrapper.addEventListener('mouseleave', () => {
-        if (currentTool === 'laser') {
+        } else {
             laserDot.classList.add('hidden');
+        }
+
+        const now = Date.now();
+        if (now - lastLaserTime > 30 || !active) {
+            lastLaserTime = now;
+            const normX = Math.max(0, Math.min(1, x / rect.width));
+            const normY = Math.max(0, Math.min(1, y / rect.height));
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'LASER_MOVE', active: false }));
+                ws.send(JSON.stringify({
+                    type: 'LASER_MOVE',
+                    x: normX,
+                    y: normY,
+                    active: active
+                }));
             }
         }
-    });
+    }
 
-    canvas.addEventListener('mousedown', (e) => {
-        if (currentTool === 'pen' || currentTool === 'highlighter') {
-            isDrawing = true;
-            const rect = canvas.getBoundingClientRect();
-            const pt = {
-                x: (e.clientX - rect.left) / rect.width,
-                y: (e.clientY - rect.top) / rect.height
-            };
-            currentStroke = [pt];
+    // Pointer events trên stageWrapper & canvas cho Laser
+    const handleLaserMove = (e) => {
+        if (currentTool === 'laser') {
+            if (e.pointerType === 'touch') {
+                updateLaser(e.clientX, e.clientY, true);
+            } else {
+                updateLaser(e.clientX, e.clientY, true);
+            }
+        }
+    };
+    stageWrapper.addEventListener('pointermove', handleLaserMove);
+    canvas.addEventListener('pointermove', (e) => {
+        if (currentTool === 'laser') {
+            handleLaserMove(e);
         }
     });
 
-    canvas.addEventListener('mousemove', (e) => {
-        if (!isDrawing) return;
+    stageWrapper.addEventListener('pointerleave', () => {
+        if (currentTool === 'laser') {
+            updateLaser(0, 0, false);
+        }
+    });
+
+    // POINTER EVENTS CHO BÚT VẼ (PEN) & HIGHLIGHTER (Hoạt động hoàn hảo cho cả Chuột, Cảm ứng điện thoại, iPad và Bút cảm ứng)
+    canvas.addEventListener('pointerdown', (e) => {
+        if (currentTool === 'laser') {
+            updateLaser(e.clientX, e.clientY, true);
+            return;
+        }
+        if (currentTool !== 'pen' && currentTool !== 'highlighter') return;
+
+        try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+        isDrawing = true;
         const rect = canvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
         const pt = {
-            x: (e.clientX - rect.left) / rect.width,
-            y: (e.clientY - rect.top) / rect.height
+            x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
+            y: Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))
+        };
+        currentStroke = [pt];
+        // Vẽ ngay điểm đầu tiên (hỗ trợ cả chạm 1 cái thành chấm tròn)
+        drawSegment([pt, pt], currentTool);
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+        if (currentTool === 'laser') {
+            updateLaser(e.clientX, e.clientY, true);
+            return;
+        }
+        if (!isDrawing) return;
+        if (currentTool !== 'pen' && currentTool !== 'highlighter') return;
+
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        const pt = {
+            x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
+            y: Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))
         };
         currentStroke.push(pt);
         drawSegment(currentStroke, currentTool);
     });
 
-    window.addEventListener('mouseup', () => {
-        if (isDrawing && currentStroke.length > 1) {
+    const endDrawing = (e) => {
+        if (currentTool === 'laser') {
+            if (e && e.pointerType === 'touch') {
+                updateLaser(0, 0, false);
+            }
+            return;
+        }
+        if (isDrawing && currentStroke.length >= 1) {
             isDrawing = false;
+            // Nếu chỉ có 1 điểm (chạm 1 cái), nhân đôi điểm để stroke hợp lệ
+            if (currentStroke.length === 1) {
+                currentStroke.push({ x: currentStroke[0].x, y: currentStroke[0].y });
+            }
             const strokeData = {
                 tool: currentTool,
                 color: currentTool === 'highlighter' ? 'rgba(250, 204, 21, 0.4)' : '#ef4444',
@@ -491,12 +570,16 @@ function setupCanvasEvents() {
             }
         }
         isDrawing = false;
-    });
+    };
+
+    canvas.addEventListener('pointerup', endDrawing);
+    canvas.addEventListener('pointercancel', endDrawing);
+    window.addEventListener('pointerup', endDrawing);
 }
 
 function drawSegment(points, tool) {
-    if (points.length < 2) return;
-    const p1 = points[points.length - 2];
+    if (!points || points.length < 1) return;
+    const p1 = points[Math.max(0, points.length - 2)];
     const p2 = points[points.length - 1];
 
     ctx.save();
@@ -523,7 +606,7 @@ function redrawAllStrokes(strokes) {
     if (!strokes) return;
 
     strokes.forEach(s => {
-        if (!s.points || s.points.length < 2) return;
+        if (!s.points || s.points.length < 1) return;
         ctx.save();
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
@@ -534,6 +617,9 @@ function redrawAllStrokes(strokes) {
         ctx.moveTo(s.points[0].x * canvas.width, s.points[0].y * canvas.height);
         for (let i = 1; i < s.points.length; i++) {
             ctx.lineTo(s.points[i].x * canvas.width, s.points[i].y * canvas.height);
+        }
+        if (s.points.length === 1) {
+            ctx.lineTo(s.points[0].x * canvas.width + 0.1, s.points[0].y * canvas.height + 0.1);
         }
         ctx.stroke();
         ctx.restore();
@@ -547,6 +633,7 @@ function clearCanvas() {
         ws.send(JSON.stringify({ type: 'CLEAR_DRAWINGS' }));
     }
 }
+window.clearCanvas = clearCanvas;
 
 // ----------------- SCREEN SHARING & LIVE BROADCAST -----------------
 
@@ -1248,6 +1335,97 @@ window.toggleChatDrawer = toggleChatDrawer;
 window.sendTeacherChatMessage = sendTeacherChatMessage;
 window.forceMuteSpeakingStudent = forceMuteSpeakingStudent;
 window.muteAllStudents = muteAllStudents;
+
+// ----------------- KHUNG CHAT & MICRO HỌC SINH LOCK/UNLOCK -----------------
+let isChatEnabled = false;
+let isStudentMicAllowed = false;
+
+function toggleChatLock() {
+    isChatEnabled = !isChatEnabled;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'TOGGLE_CHAT_LOCK',
+            enabled: isChatEnabled
+        }));
+    }
+    updateChatLockUI(isChatEnabled);
+}
+window.toggleChatLock = toggleChatLock;
+
+function updateChatLockUI(enabled) {
+    isChatEnabled = !!enabled;
+    const btnLock = document.getElementById('btn-chat-lock');
+    const lockIcon = document.getElementById('chat-lock-icon');
+    const lockText = document.getElementById('chat-lock-text');
+    const drawerBtn = document.getElementById('btn-drawer-chat-lock');
+    const drawerIcon = document.getElementById('drawer-chat-lock-icon');
+    const drawerText = document.getElementById('drawer-chat-lock-text');
+
+    if (enabled) {
+        if (btnLock) {
+            btnLock.className = "px-2.5 sm:px-3 py-1.5 bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition border border-emerald-500/50 cursor-pointer shadow-sm";
+            btnLock.title = "Khung chat đang MỞ cho học sinh. Bấm để khóa lại.";
+        }
+        if (lockIcon) lockIcon.className = "fa-solid fa-comments text-emerald-400";
+        if (lockText) lockText.textContent = "Chat HS: Mở";
+
+        if (drawerBtn) {
+            drawerBtn.className = "px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center space-x-1 transition border bg-emerald-950/80 border-emerald-500/60 text-emerald-300 hover:bg-emerald-900/80 cursor-pointer shadow-sm";
+            drawerBtn.title = "Khung chat đang MỞ. Bấm để khóa.";
+        }
+        if (drawerIcon) drawerIcon.className = "fa-solid fa-comments text-emerald-400";
+        if (drawerText) drawerText.textContent = "Chat HS: Mở";
+    } else {
+        if (btnLock) {
+            btnLock.className = "px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-rose-950/60 text-slate-300 hover:text-rose-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition border border-slate-700 hover:border-rose-700/60 cursor-pointer";
+            btnLock.title = "Khung chat đang TẮT đối với học sinh (mặc định). Bấm để mở cho học sinh chat.";
+        }
+        if (lockIcon) lockIcon.className = "fa-solid fa-comment-slash text-rose-400";
+        if (lockText) lockText.textContent = "Chat HS: Tắt";
+
+        if (drawerBtn) {
+            drawerBtn.className = "px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center space-x-1 transition border bg-rose-950/80 border-rose-600/50 text-rose-300 hover:bg-rose-900/80 cursor-pointer shadow-sm";
+            drawerBtn.title = "Khung chat đang TẮT. Bấm để mở.";
+        }
+        if (drawerIcon) drawerIcon.className = "fa-solid fa-comment-slash text-rose-400";
+        if (drawerText) drawerText.textContent = "Chat HS: Tắt";
+    }
+}
+
+function toggleStudentMicLock() {
+    isStudentMicAllowed = !isStudentMicAllowed;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'TOGGLE_STUDENT_MIC_LOCK',
+            allowed: isStudentMicAllowed
+        }));
+    }
+    updateStudentMicLockUI(isStudentMicAllowed);
+}
+window.toggleStudentMicLock = toggleStudentMicLock;
+
+function updateStudentMicLockUI(allowed) {
+    isStudentMicAllowed = !!allowed;
+    const btnLock = document.getElementById('btn-student-mic-lock');
+    const lockIcon = document.getElementById('student-mic-lock-icon');
+    const lockText = document.getElementById('student-mic-lock-text');
+
+    if (allowed) {
+        if (btnLock) {
+            btnLock.className = "px-2.5 sm:px-3 py-1.5 bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition border border-emerald-500/50 cursor-pointer shadow-sm";
+            btnLock.title = "Micro học sinh đang ĐƯỢC PHÉP phát biểu. Bấm để tắt/khóa lại.";
+        }
+        if (lockIcon) lockIcon.className = "fa-solid fa-microphone text-emerald-400";
+        if (lockText) lockText.textContent = "Mic HS: Mở";
+    } else {
+        if (btnLock) {
+            btnLock.className = "px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-rose-950/80 text-slate-300 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition border border-slate-700 cursor-pointer";
+            btnLock.title = "Micro học sinh đang TẮT (mặc định khi trình chiếu). Bấm để cho phép học sinh phát biểu.";
+        }
+        if (lockIcon) lockIcon.className = "fa-solid fa-microphone-slash text-rose-400";
+        if (lockText) lockText.textContent = "Mic HS: Tắt";
+    }
+}
 
 // ----------------- EXIT LESSON & END SESSION -----------------
 function confirmExitLesson(e) {

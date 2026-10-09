@@ -183,10 +183,16 @@
             </div>
         </div>
 
+        <!-- Chat Lock Notice (Hiển thị khi Thầy/Cô tạm tắt khung chat) -->
+        <div id="student-chat-lock-banner" class="px-3 py-2 bg-amber-950/80 border-t border-amber-600/40 text-amber-300 text-[11px] font-semibold flex items-center space-x-1.5 shrink-0">
+            <i class="fa-solid fa-lock text-amber-400"></i>
+            <span>Thầy/Cô đang tạm tắt khung chat</span>
+        </div>
+
         <!-- Chat Input Form -->
         <form onsubmit="sendStudentChatMessage(event)" class="p-2 bg-slate-950 border-t border-slate-800 flex items-center space-x-1.5 shrink-0">
-            <input type="text" id="student-chat-input" placeholder="Nhập câu hỏi hoặc tin nhắn..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500" autocomplete="off">
-            <button type="submit" class="px-3.5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1 shrink-0 cursor-pointer">
+            <input type="text" id="student-chat-input" placeholder="Thầy/Cô đang tạm tắt khung chat..." disabled class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-400 placeholder-slate-600 focus:outline-none opacity-60 cursor-not-allowed" autocomplete="off">
+            <button id="student-chat-send-btn" type="submit" disabled class="px-3.5 py-2 bg-cyan-600 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1 shrink-0 opacity-40 cursor-not-allowed pointer-events-none">
                 <span>Gửi</span>
                 <i class="fa-solid fa-paper-plane text-[10px]"></i>
             </button>
@@ -330,6 +336,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/student.js?v=19"></script>
+    <script src="/static/js/student.js?v=21"></script>
 </body>
 </html>

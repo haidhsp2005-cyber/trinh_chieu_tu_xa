@@ -31,14 +31,17 @@
             height: 100%;
             z-index: 20;
             touch-action: none;
+            pointer-events: none;
         }
         /* Custom scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
-<body class="bg-slate-950 text-white h-screen flex flex-col overflow-hidden select-none">
+<body class="bg-slate-950 text-white h-[100dvh] flex flex-col overflow-hidden select-none">
 
     <!-- FLOATING SCREEN SHARE LIVE BANNER (Hiển thị link chia sẻ và QR khi đang chia sẻ màn hình) -->
     <div id="screen-share-banner" class="fixed top-2 left-1/2 -translate-x-1/2 z-50 bg-rose-600/95 text-white px-3 sm:px-4 py-2 rounded-2xl shadow-2xl flex items-center space-x-2 sm:space-x-3 border border-rose-400 backdrop-blur hidden max-w-[95vw]">
@@ -61,83 +64,89 @@
     </div>
 
     <!-- Top Teacher Bar -->
-    <header class="bg-slate-900 border-b border-slate-800 px-4 h-14 flex items-center justify-between z-30 shrink-0">
-        <div class="flex items-center space-x-3">
+    <header class="bg-slate-900 border-b border-slate-800 px-2 sm:px-4 h-14 flex items-center justify-between z-30 shrink-0 gap-2">
+        <div class="flex items-center space-x-2 sm:space-x-3 shrink-0">
             <button onclick="confirmExitLesson(event)" type="button" class="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition cursor-pointer" title="Thoát bài giảng & Về trang chủ">
                 <i class="fa-solid fa-arrow-left"></i>
             </button>
-            <div class="h-5 w-px bg-slate-800"></div>
+            <div class="h-5 w-px bg-slate-800 hidden sm:block"></div>
             <div>
-                <h1 class="text-sm font-bold truncate max-w-xs sm:max-w-md text-slate-100" id="header-title">{{ session.title }}</h1>
-                <p class="text-[11px] text-slate-400">Phòng: <span class="font-mono text-blue-400 font-semibold">{{ room_id }}</span></p>
+                <h1 class="text-xs sm:text-sm font-bold truncate max-w-[100px] sm:max-w-xs md:max-w-md text-slate-100" id="header-title">{{ session.title }}</h1>
+                <p class="text-[10px] sm:text-[11px] text-slate-400">Phòng: <span class="font-mono text-blue-400 font-semibold">{{ room_id }}</span></p>
             </div>
         </div>
 
-        <!-- Student Count Indicator & Actions -->
-        <div class="flex items-center space-x-2 sm:space-x-3">
+        <!-- Student Count Indicator & Actions (Mobile responsive with smooth scroll) -->
+        <div class="flex items-center space-x-1.5 sm:space-x-2.5 overflow-x-auto no-scrollbar py-1 shrink-0 max-w-[calc(100vw-110px)] sm:max-w-none">
             <!-- Đổi bài giảng nhanh dropdown -->
-            <div class="relative hidden md:block">
+            <div class="relative hidden md:block shrink-0">
                 <select id="select-change-material" onchange="changeMaterial(this.value)" class="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500">
                     {% for m in all_materials %}
                     <option value="{{ m.id }}" {% if m.id == session.material_id %}selected{% endif %}>
-                        📖 {{ m.title[:30] }}
+                        📖 {{ m.title[:25] }}
                     </option>
                     {% endfor %}
                 </select>
             </div>
 
             <!-- Live Students Count Badge -->
-            <div class="flex items-center space-x-2 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-full text-xs text-slate-300 font-semibold">
-                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
-                <span><span id="student-counter">0</span> HS đang xem</span>
+            <div class="flex items-center space-x-1.5 bg-slate-950 border border-slate-800 px-2.5 py-1 sm:py-1.5 rounded-full text-[11px] sm:text-xs text-slate-300 font-semibold shrink-0">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                <span><span id="student-counter">0</span> <span class="hidden sm:inline">HS đang xem</span></span>
             </div>
 
             <!-- Nút Chia sẻ bài giảng nổi bật -->
-            <button onclick="openShareModal()" class="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg shadow-blue-500/25 flex items-center space-x-1.5 transition">
+            <button onclick="openShareModal()" class="px-2.5 sm:px-3.5 py-1 sm:py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow-md flex items-center space-x-1 transition shrink-0" title="Chia sẻ bài giảng cho học sinh">
                 <i class="fa-solid fa-share-nodes"></i>
-                <span>Chia sẻ bài giảng</span>
+                <span class="hidden md:inline">Chia sẻ</span>
             </button>
 
             <!-- Nút Bật/Tắt Micro Giáo Viên -->
-            <button id="btn-mic-toggle" onclick="toggleMicrophone()" type="button" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition border border-slate-700 cursor-pointer" title="Bật/Tắt Micro thu âm giọng nói phát cho học sinh (Phím tắt: M)">
+            <button id="btn-mic-toggle" onclick="toggleMicrophone()" type="button" class="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1 transition border border-slate-700 cursor-pointer shrink-0" title="Bật/Tắt Micro Giáo Viên (Phím tắt: M)">
                 <i id="mic-icon" class="fa-solid fa-microphone-slash text-slate-400"></i>
-                <span id="mic-text" class="hidden sm:inline">Bật Mic</span>
+                <span id="mic-text" class="hidden lg:inline">Bật Mic</span>
                 <span id="mic-pulse" class="w-2 h-2 rounded-full bg-emerald-400 hidden animate-ping"></span>
             </button>
 
-            <!-- Nút Tắt tất cả Micro Học Sinh -->
-            <button id="btn-mute-all-students" onclick="muteAllStudents()" type="button" class="px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-rose-950/80 hover:text-rose-200 hover:border-rose-700/60 text-slate-300 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition border border-slate-700 cursor-pointer" title="Tắt toàn bộ Micro của tất cả học sinh trong lớp">
-                <i class="fa-solid fa-microphone-slash text-rose-400"></i>
-                <span class="hidden xl:inline">Tắt tất cả mic HS</span>
+            <!-- Nút Bật/Tắt Micro Học Sinh (Mặc định: TẮT khi trình chiếu) -->
+            <button id="btn-student-mic-lock" onclick="toggleStudentMicLock()" type="button" class="px-2 sm:px-2.5 py-1 sm:py-1.5 bg-slate-800 hover:bg-rose-950/80 text-slate-300 rounded-lg text-xs font-semibold flex items-center space-x-1 transition border border-slate-700 cursor-pointer shrink-0" title="Bật/Tắt quyền phát biểu Micro của học sinh">
+                <i id="student-mic-lock-icon" class="fa-solid fa-microphone-slash text-rose-400"></i>
+                <span id="student-mic-lock-text" class="hidden xl:inline">Mic HS: Tắt</span>
             </button>
 
             <!-- Nút Chia sẻ Màn hình (WebRTC) -->
-            <button id="btn-screen-share" onclick="toggleScreenShare()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition">
+            <button id="btn-screen-share" onclick="toggleScreenShare()" class="hidden md:flex px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold items-center space-x-1.5 transition shrink-0">
                 <i class="fa-solid fa-display text-blue-400"></i>
-                <span class="hidden sm:inline" id="screen-share-text">Chia sẻ màn hình</span>
+                <span class="hidden lg:inline" id="screen-share-text">Chia sẻ màn hình</span>
             </button>
 
             <!-- Bật tắt Drawer Danh sách Slide -->
-            <button onclick="toggleSlideDrawer()" id="btn-drawer-toggle" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer" title="Xem danh sách tất cả các trang slide">
+            <button onclick="toggleSlideDrawer()" id="btn-drawer-toggle" class="px-2.5 py-1 sm:py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1 transition cursor-pointer shrink-0" title="Xem danh sách tất cả các trang slide">
                 <i class="fa-solid fa-table-cells-large text-amber-400"></i>
-                <span class="hidden sm:inline">Danh sách Slide</span>
+                <span class="hidden xl:inline">Slide</span>
             </button>
 
-            <!-- Bật/Tắt Khung Chat & Hỏi đáp -->
-            <button onclick="toggleChatDrawer()" id="btn-chat-toggle" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition relative border border-slate-700 cursor-pointer" title="Hỏi đáp & Trò chuyện với học sinh">
+            <!-- Nút Bật/Tắt Khung Chat cho Học Sinh (Mặc định: TẮT khi trình chiếu) -->
+            <button onclick="toggleChatLock()" id="btn-chat-lock" type="button" class="px-2 sm:px-2.5 py-1 sm:py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold flex items-center space-x-1 transition border border-slate-700 cursor-pointer shrink-0" title="Bật/Tắt khung chat học sinh">
+                <i id="chat-lock-icon" class="fa-solid fa-comment-slash text-rose-400"></i>
+                <span id="chat-lock-text" class="hidden xl:inline">Chat HS: Tắt</span>
+            </button>
+
+            <!-- Bật/Tắt Khung Chat & Hỏi đáp Drawer -->
+            <button onclick="toggleChatDrawer()" id="btn-chat-toggle" class="px-2.5 py-1 sm:py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1 transition relative border border-slate-700 cursor-pointer shrink-0" title="Hỏi đáp & Trò chuyện">
                 <i class="fa-solid fa-comments text-cyan-400"></i>
-                <span class="hidden sm:inline">Hỏi đáp / Chat</span>
-                <span id="teacher-chat-badge" class="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center hidden animate-bounce">0</span>
+                <span class="hidden lg:inline">Chat</span>
+                <span id="teacher-chat-badge" class="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center hidden animate-bounce">0</span>
             </button>
 
             <!-- Fullscreen -->
-            <button onclick="toggleFullScreen()" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer" title="Toàn màn hình">
-                <i class="fa-solid fa-expand"></i>
+            <button onclick="toggleFullScreen()" class="p-1.5 sm:p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer shrink-0" title="Toàn màn hình">
+                <i class="fa-solid fa-expand text-xs"></i>
             </button>
 
             <!-- Nút Kết thúc bài giảng & Thoát (Exit) -->
-            <button id="btn-exit-lesson" onclick="confirmExitLesson(event)" type="button" class="px-3 py-1.5 bg-rose-600/90 hover:bg-rose-600 active:scale-95 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-sm border border-rose-500 cursor-pointer" title="Kết thúc bài giảng, dừng trình chiếu và thoát ra trang chủ">
-                <i class="fa-solid fa-right-from-bracket"></i>
+            <button id="btn-exit-lesson" onclick="confirmExitLesson(event)" type="button" class="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-rose-600/90 hover:bg-rose-600 active:scale-95 text-white rounded-lg text-xs font-bold flex items-center space-x-1 transition shadow-sm border border-rose-500 cursor-pointer shrink-0" title="Thoát bài giảng">
+                <i class="fa-solid fa-right-from-bracket text-xs"></i>
                 <span class="hidden sm:inline">Thoát</span>
             </button>
         </div>
@@ -228,11 +237,11 @@
                     <div id="laser-dot" class="laser-dot hidden"></div>
 
                     <!-- 5. FLOATING QUICK NEXT/PREV ARROWS ON SLIDE EDGES -->
-                    <button onclick="prevPage()" id="arrow-prev" class="fixed left-6 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-slate-900/60 hover:bg-blue-600 text-white flex items-center justify-center transition backdrop-blur z-30 shadow-2xl disabled:opacity-0 pointer-events-auto border border-slate-700" title="Trang trước (Phím mũi tên trái)">
-                        <i class="fa-solid fa-chevron-left text-lg"></i>
+                    <button onclick="prevPage()" id="arrow-prev" class="fixed left-2 sm:left-6 top-1/2 -translate-y-1/2 w-8 h-8 sm:w-12 sm:h-12 rounded-full bg-slate-900/60 hover:bg-blue-600 text-white flex items-center justify-center transition backdrop-blur z-30 shadow-2xl disabled:opacity-0 pointer-events-auto border border-slate-700" title="Trang trước (Phím mũi tên trái)">
+                        <i class="fa-solid fa-chevron-left text-sm sm:text-lg"></i>
                     </button>
-                    <button onclick="nextPage()" id="arrow-next" class="fixed right-6 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-slate-900/60 hover:bg-blue-600 text-white flex items-center justify-center transition backdrop-blur z-30 shadow-2xl disabled:opacity-0 pointer-events-auto border border-slate-700" title="Trang sau (Phím mũi tên phải)">
-                        <i class="fa-solid fa-chevron-right text-lg"></i>
+                    <button onclick="nextPage()" id="arrow-next" class="fixed right-2 sm:right-6 top-1/2 -translate-y-1/2 w-8 h-8 sm:w-12 sm:h-12 rounded-full bg-slate-900/60 hover:bg-blue-600 text-white flex items-center justify-center transition backdrop-blur z-30 shadow-2xl disabled:opacity-0 pointer-events-auto border border-slate-700" title="Trang sau (Phím mũi tên phải)">
+                        <i class="fa-solid fa-chevron-right text-sm sm:text-lg"></i>
                     </button>
                 </div>
 
@@ -270,9 +279,16 @@
                         <p class="text-[10px] text-slate-400">Tương tác trực tiếp với học sinh</p>
                     </div>
                 </div>
-                <button onclick="toggleChatDrawer()" class="text-slate-400 hover:text-white text-xs p-1 rounded-lg hover:bg-slate-800 transition">
-                    <i class="fa-solid fa-xmark text-sm"></i>
-                </button>
+                <div class="flex items-center space-x-2">
+                    <!-- Nút Bật/Tắt Quyền Chat Học Sinh ngay trong Drawer -->
+                    <button onclick="toggleChatLock()" id="btn-drawer-chat-lock" type="button" class="px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center space-x-1 transition border bg-rose-950/80 border-rose-600/50 text-rose-300 hover:bg-rose-900/80 cursor-pointer" title="Bật hoặc Khóa khung chat học sinh">
+                        <i id="drawer-chat-lock-icon" class="fa-solid fa-comment-slash"></i>
+                        <span id="drawer-chat-lock-text">Chat HS: Tắt</span>
+                    </button>
+                    <button onclick="toggleChatDrawer()" class="text-slate-400 hover:text-white text-xs p-1 rounded-lg hover:bg-slate-800 transition">
+                        <i class="fa-solid fa-xmark text-sm"></i>
+                    </button>
+                </div>
             </div>
 
             <!-- Chat Messages Container -->
@@ -299,77 +315,81 @@
     </div>
 
     <!-- ALWAYS VISIBLE FIXED BOTTOM PRESENTER DOCK -->
-    <footer class="h-16 bg-slate-900 border-t border-slate-800 px-3 sm:px-6 flex items-center justify-between shrink-0 z-40 relative shadow-2xl">
+    <footer class="bg-slate-900 border-t border-slate-800 px-2 sm:px-6 py-1.5 sm:py-0 sm:h-16 flex flex-col md:flex-row items-center justify-between gap-1.5 sm:gap-2 shrink-0 z-40 relative shadow-2xl">
         
-        <!-- PPT Navigation Controls (Left side) -->
-        <div class="flex items-center space-x-1.5 sm:space-x-3">
-            <button onclick="goToPage(1)" id="btn-first" class="px-2.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition flex items-center space-x-1" title="Về trang đầu tiên">
-                <i class="fa-solid fa-backward-step"></i>
-            </button>
-            <button onclick="prevPage()" id="btn-prev" class="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md transition flex items-center space-x-1.5 disabled:opacity-30 disabled:cursor-not-allowed">
-                <i class="fa-solid fa-arrow-left"></i>
-                <span class="hidden sm:inline">Trang trước</span>
-            </button>
-            
-            <!-- Page Number Selector / Jumper -->
-            <div class="flex items-center bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 space-x-1 text-xs font-bold">
-                <span class="text-slate-400">Trang</span>
-                <span id="current-page-text" class="text-white text-sm font-extrabold font-mono px-1">1</span>
-                <span class="text-slate-600">/</span>
-                <span id="total-page-text" class="text-slate-300 font-mono">1</span>
+        <!-- PPT Navigation Controls & Zoom (Row 1 on mobile, Left & Center on desktop) -->
+        <div class="flex items-center justify-between w-full md:w-auto space-x-1.5 sm:space-x-3">
+            <!-- Nav buttons -->
+            <div class="flex items-center space-x-1 sm:space-x-2">
+                <button onclick="goToPage(1)" id="btn-first" class="px-2 sm:px-2.5 py-1.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition flex items-center space-x-1" title="Về trang đầu tiên">
+                    <i class="fa-solid fa-backward-step"></i>
+                </button>
+                <button onclick="prevPage()" id="btn-prev" class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md transition flex items-center space-x-1 disabled:opacity-30 disabled:cursor-not-allowed">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    <span class="hidden sm:inline">Trang trước</span>
+                </button>
+                
+                <!-- Page Number Selector / Jumper -->
+                <div class="flex items-center bg-slate-950 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-slate-800 space-x-1 text-xs font-bold">
+                    <span class="text-slate-400 text-[11px] sm:text-xs">Trang</span>
+                    <span id="current-page-text" class="text-white text-xs sm:text-sm font-extrabold font-mono px-0.5">1</span>
+                    <span class="text-slate-600">/</span>
+                    <span id="total-page-text" class="text-slate-300 text-xs sm:text-sm font-mono">1</span>
+                </div>
+
+                <button onclick="nextPage()" id="btn-next" class="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md transition flex items-center space-x-1 disabled:opacity-30 disabled:cursor-not-allowed">
+                    <span class="hidden sm:inline">Trang sau</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
             </div>
 
-            <button onclick="nextPage()" id="btn-next" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md transition flex items-center space-x-1.5 disabled:opacity-30 disabled:cursor-not-allowed">
-                <span>Trang sau</span>
-                <i class="fa-solid fa-arrow-right"></i>
-            </button>
+            <!-- Zoom & Fit Controls -->
+            <div class="flex items-center space-x-1 bg-slate-950 p-1 sm:p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+                <button onclick="changeZoom(-0.25)" class="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition flex items-center justify-center" title="Thu nhỏ (-)">
+                    <i class="fa-solid fa-minus"></i>
+                </button>
+                <button onclick="resetZoom()" id="btn-zoom-level" class="px-1.5 sm:px-2 py-1 text-[11px] sm:text-xs font-bold text-slate-200 hover:text-blue-400 font-mono" title="Bấm để đặt lại 100%">
+                    100%
+                </button>
+                <button onclick="changeZoom(0.25)" class="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition flex items-center justify-center" title="Phóng to (+)">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+                <div class="h-4 w-px bg-slate-800"></div>
+                <button onclick="toggleFitMode()" id="btn-fit-mode" class="px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-500 transition flex items-center space-x-1" title="Chuyển chế độ: Vừa bề ngang (Chữ to) hoặc Vừa toàn khung">
+                    <i class="fa-solid fa-arrows-left-right-to-line"></i>
+                    <span class="hidden md:inline" id="text-fit-mode">Vừa chiều rộng</span>
+                </button>
+            </div>
         </div>
 
-        <!-- Zoom & Fit Controls (Center) -->
-        <div class="flex items-center space-x-1 sm:space-x-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
-            <button onclick="changeZoom(-0.25)" class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition flex items-center justify-center" title="Thu nhỏ (-)">
-                <i class="fa-solid fa-minus"></i>
-            </button>
-            <button onclick="resetZoom()" id="btn-zoom-level" class="px-2 py-1 text-xs font-bold text-slate-200 hover:text-blue-400 font-mono" title="Bấm để đặt lại 100%">
-                100%
-            </button>
-            <button onclick="changeZoom(0.25)" class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition flex items-center justify-center" title="Phóng to (+)">
-                <i class="fa-solid fa-plus"></i>
-            </button>
-            <div class="h-4 w-px bg-slate-800"></div>
-            <button onclick="toggleFitMode()" id="btn-fit-mode" class="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-500 transition flex items-center space-x-1" title="Chuyển chế độ: Vừa bề ngang (Chữ to) hoặc Vừa toàn khung">
-                <i class="fa-solid fa-arrows-left-right-to-line"></i>
-                <span class="hidden md:inline" id="text-fit-mode">Vừa chiều rộng</span>
-            </button>
-        </div>
-
-        <!-- Interactive Teaching Tools (Pointer, Laser, Pen, Highlighter, Clear) -->
-        <div class="flex items-center space-x-1 sm:space-x-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
-            <button onclick="setTool('cursor')" id="tool-cursor" class="px-3 py-1.5 rounded-xl text-xs font-bold transition bg-blue-600 text-white flex items-center space-x-1.5" title="Con trỏ chuột">
+        <!-- Interactive Teaching Tools (Pointer, Laser, Pen, Highlighter, Clear) - Row 2 on mobile, Right on desktop -->
+        <div class="flex items-center justify-center space-x-1 sm:space-x-1.5 bg-slate-950 p-1 sm:p-1.5 rounded-2xl border border-slate-800 shadow-inner w-full md:w-auto overflow-x-auto no-scrollbar">
+            <button onclick="setTool('cursor')" id="tool-cursor" class="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition bg-blue-600 text-white flex items-center space-x-1 sm:space-x-1.5 shrink-0" title="Con trỏ chuột">
                 <i class="fa-solid fa-arrow-pointer"></i>
-                <span class="hidden md:inline">Chuột</span>
+                <span class="text-[11px] sm:text-xs">Chuột</span>
             </button>
-            <button onclick="setTool('laser')" id="tool-laser" class="px-3 py-1.5 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white flex items-center space-x-1.5" title="Bút Laser phát sáng">
+            <button onclick="setTool('laser')" id="tool-laser" class="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white flex items-center space-x-1 sm:space-x-1.5 shrink-0" title="Bút Laser phát sáng">
                 <i class="fa-solid fa-bullseye text-red-500"></i>
-                <span class="hidden md:inline">Laser</span>
+                <span class="text-[11px] sm:text-xs">Laser</span>
             </button>
-            <button onclick="setTool('pen')" id="tool-pen" class="px-3 py-1.5 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white flex items-center space-x-1.5" title="Bút vẽ đỏ">
+            <button onclick="setTool('pen')" id="tool-pen" class="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white flex items-center space-x-1 sm:space-x-1.5 shrink-0" title="Bút vẽ đỏ">
                 <i class="fa-solid fa-pen text-rose-400"></i>
-                <span class="hidden md:inline">Bút vẽ</span>
+                <span class="text-[11px] sm:text-xs">Bút vẽ</span>
             </button>
-            <button onclick="setTool('highlighter')" id="tool-highlighter" class="px-3 py-1.5 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white flex items-center space-x-1.5" title="Bút dạ quang vàng">
+            <button onclick="setTool('highlighter')" id="tool-highlighter" class="px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white flex items-center space-x-1 sm:space-x-1.5 shrink-0" title="Bút dạ quang vàng">
                 <i class="fa-solid fa-highlighter text-amber-400"></i>
-                <span class="hidden md:inline">Highlight</span>
+                <span class="text-[11px] sm:text-xs">Highlight</span>
             </button>
-            <div class="h-5 w-px bg-slate-800"></div>
-            <button onclick="clearCanvas()" class="px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-rose-400 hover:bg-slate-900 transition" title="Xóa toàn bộ nét vẽ">
+            <div class="h-4 sm:h-5 w-px bg-slate-800 shrink-0"></div>
+            <button onclick="clearCanvas()" class="px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-rose-400 hover:bg-slate-900 transition shrink-0 flex items-center space-x-1" title="Xóa toàn bộ nét vẽ">
                 <i class="fa-solid fa-trash-can"></i>
+                <span class="text-[11px] sm:text-xs hidden sm:inline">Xóa</span>
             </button>
         </div>
 
-        <!-- Right Side Quick Info -->
-        <div class="hidden lg:flex items-center space-x-3 text-xs text-slate-400">
-            <span class="px-2.5 py-1 bg-slate-800/80 rounded-lg border border-slate-700/50">Phím tắt: Space / ◀ ▶ / L (Laser) / P (Bút)</span>
+        <!-- Right Side Quick Info (Desktop only) -->
+        <div class="hidden xl:flex items-center space-x-3 text-xs text-slate-400">
+            <span class="px-2.5 py-1 bg-slate-800/80 rounded-lg border border-slate-700/50">Phím tắt: ◀ ▶ / L (Laser) / P (Bút)</span>
         </div>
     </footer>
 
@@ -476,6 +496,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/teacher.js?v=18"></script>
+    <script src="/static/js/teacher.js?v=21"></script>
 </body>
 </html>
