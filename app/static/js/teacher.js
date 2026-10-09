@@ -1249,6 +1249,47 @@ window.sendTeacherChatMessage = sendTeacherChatMessage;
 window.forceMuteSpeakingStudent = forceMuteSpeakingStudent;
 window.muteAllStudents = muteAllStudents;
 
+// ----------------- EXIT LESSON & END SESSION -----------------
+function confirmExitLesson(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const modal = document.getElementById('modal-confirm-exit');
+    if (modal) modal.classList.remove('hidden');
+}
+window.confirmExitLesson = confirmExitLesson;
+
+function closeExitModal() {
+    const modal = document.getElementById('modal-confirm-exit');
+    if (modal) modal.classList.add('hidden');
+}
+window.closeExitModal = closeExitModal;
+
+async function executeExitLesson() {
+    try {
+        // Tắt micro nếu đang bật
+        if (typeof isMicActive !== 'undefined' && isMicActive) {
+            await toggleMicrophone().catch(() => {});
+        }
+        // Dừng chia sẻ màn hình nếu đang bật
+        if (typeof isScreenSharing !== 'undefined' && isScreenSharing) {
+            await toggleScreenShare().catch(() => {});
+        }
+
+        // Gửi thông báo thoát qua WebSocket
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'TEACHER_EXIT' }));
+        }
+
+        // Đồng thời gọi API exit để chắc chắn server cập nhật phòng đã kết thúc
+        await fetch(`/api/room/${ROOM_ID}/exit`, { method: 'POST' }).catch(() => {});
+    } catch (e) {
+        console.warn("Exit lesson error:", e);
+    } finally {
+        // Chuyển về giao diện web ban đầu (trang chủ)
+        window.location.href = '/';
+    }
+}
+window.executeExitLesson = executeExitLesson;
+
 // Mở khoá AudioContext của Giáo viên ngay khi có thao tác bất kỳ (Click, chạm, bấm phím)
 document.addEventListener('click', () => { initOrResumeTeacherAudioPlayer(); }, { passive: true });
 document.addEventListener('touchstart', () => { initOrResumeTeacherAudioPlayer(); }, { passive: true });

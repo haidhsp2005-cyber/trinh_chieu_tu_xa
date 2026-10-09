@@ -113,6 +113,7 @@ class ClassroomSession:
         self.speaking_student: Dict[str, Any] = None # Học sinh đang bật micro phát biểu
         self.teacher_ws = None
         self.students: Dict[str, WebSocket] = {}
+        self.is_active = False # True khi giáo viên đang mở phòng trình chiếu
 
     def to_state_dict(self):
         return {
@@ -127,7 +128,8 @@ class ClassroomSession:
             "drawings": self.drawings,
             "chat_messages": self.chat_messages[-50:],
             "speaking_student": self.speaking_student,
-            "student_count": len(self.students)
+            "student_count": len(self.students),
+            "is_active": self.is_active
         }
 
 active_rooms: Dict[str, ClassroomSession] = {}
@@ -213,8 +215,12 @@ async def teacher_view(request: Request, room_id: str, material_id: str = None):
     else:
         actual_room_id = room_id
 
+    global current_active_teacher_room_id
+    current_active_teacher_room_id = actual_room_id
+
     lan_ip = get_lan_ip()
     session = ensure_session_loaded(actual_room_id, material_id)
+    session.is_active = True
     all_materials = list_materials()
 
     return templates.TemplateResponse(
@@ -376,6 +382,23 @@ async def remove_material_api(item_id: str):
     success = delete_material(item_id)
     return {"success": success}
 
+@app.post("/api/room/{room_id}/exit")
+async def exit_room_api(room_id: str):
+    global current_active_teacher_room_id
+    mat = get_material(room_id)
+    actual_room_id = f"room_{mat['id']}" if mat else room_id
+    if actual_room_id in active_rooms:
+        session = active_rooms[actual_room_id]
+        session.is_active = False
+        session.teacher_ws = None
+        if current_active_teacher_room_id == actual_room_id:
+            current_active_teacher_room_id = None
+        await _broadcast_to_students(session, {
+            "type": "TEACHER_EXITED",
+            "message": "Giáo viên đã tắt không trình chiếu bài giảng này."
+        })
+    return {"status": "success"}
+
 # ----------------- WEBSOCKET REALTIME SYNC & WEBRTC -----------------
 
 @app.websocket("/ws/{room_id}/{role}")
@@ -389,6 +412,12 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
     if role == "teacher":
         current_active_teacher_room_id = room_id
         session.teacher_ws = websocket
+        session.is_active = True
+        # Báo cho các học sinh đang trong phòng rằng giáo viên đã kết nối và đang trình chiếu
+        await _broadcast_to_students(session, {
+            "type": "TEACHER_STARTED_SESSION",
+            "state": session.to_state_dict()
+        })
     else:
         session.students[client_id] = websocket
 
@@ -428,8 +457,19 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
             data = await websocket.receive_json()
             msg_type = data.get("type")
 
+            # 0. Giáo viên chủ động kết thúc & thoát bài giảng
+            if msg_type == "TEACHER_EXIT":
+                session.is_active = False
+                session.teacher_ws = None
+                if current_active_teacher_room_id == room_id:
+                    current_active_teacher_room_id = None
+                await _broadcast_to_students(session, {
+                    "type": "TEACHER_EXITED",
+                    "message": "Giáo viên đã tắt không trình chiếu bài giảng này."
+                })
+
             # 1. Chuyển trang Slide
-            if msg_type == "PAGE_CHANGE":
+            elif msg_type == "PAGE_CHANGE":
                 page = data.get("page", 1)
                 session.current_page = page
                 session.laser = {"x": -1, "y": -1, "active": False}

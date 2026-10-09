@@ -63,9 +63,9 @@
     <!-- Top Teacher Bar -->
     <header class="bg-slate-900 border-b border-slate-800 px-4 h-14 flex items-center justify-between z-30 shrink-0">
         <div class="flex items-center space-x-3">
-            <a href="/" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition" title="Về trang chủ">
+            <button onclick="confirmExitLesson(event)" type="button" class="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition cursor-pointer" title="Thoát bài giảng & Về trang chủ">
                 <i class="fa-solid fa-arrow-left"></i>
-            </a>
+            </button>
             <div class="h-5 w-px bg-slate-800"></div>
             <div>
                 <h1 class="text-sm font-bold truncate max-w-xs sm:max-w-md text-slate-100" id="header-title">{{ session.title }}</h1>
@@ -133,6 +133,12 @@
             <!-- Fullscreen -->
             <button onclick="toggleFullScreen()" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer" title="Toàn màn hình">
                 <i class="fa-solid fa-expand"></i>
+            </button>
+
+            <!-- Nút Kết thúc bài giảng & Thoát (Exit) -->
+            <button id="btn-exit-lesson" onclick="confirmExitLesson(event)" type="button" class="px-3 py-1.5 bg-rose-600/90 hover:bg-rose-600 active:scale-95 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-sm border border-rose-500 cursor-pointer" title="Kết thúc bài giảng, dừng trình chiếu và thoát ra trang chủ">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                <span class="hidden sm:inline">Thoát</span>
             </button>
         </div>
     </header>
@@ -439,6 +445,28 @@
         </div>
     </div>
 
+    <!-- MODAL XÁC NHẬN KẾT THÚC BÀI GIẢNG & THOÁT -->
+    <div id="modal-confirm-exit" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-sm w-full p-6 shadow-2xl text-center relative overflow-hidden">
+            <div class="w-16 h-16 bg-rose-950/80 border-2 border-rose-500/50 text-rose-400 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl shadow-xl shadow-rose-950/50">
+                <i class="fa-solid fa-power-off"></i>
+            </div>
+            <h3 class="text-base sm:text-lg font-bold text-white mb-2">Thoát bài giảng?</h3>
+            <p class="text-xs text-slate-300 mb-6 leading-relaxed">
+                Thao tác này sẽ <span class="text-rose-400 font-bold">dừng trình chiếu</span>, đóng phòng học và chuyển sang thông báo cho tất cả học sinh rằng Thầy/Cô đã tắt bài giảng.
+            </p>
+            <div class="flex items-center space-x-3">
+                <button onclick="closeExitModal()" type="button" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer">
+                    Ở lại tiếp tục
+                </button>
+                <button onclick="executeExitLesson()" type="button" class="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-lg shadow-rose-600/30 cursor-pointer">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                    <span>Xác nhận Thoát</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- INITIAL SESSION DATA INJECTION -->
     <script>
         window.INITIAL_SESSION = {{ session | tojson }};
@@ -448,6 +476,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/teacher.js?v=17"></script>
+    <script src="/static/js/teacher.js?v=18"></script>
 </body>
 </html>

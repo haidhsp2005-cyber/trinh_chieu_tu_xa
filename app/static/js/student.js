@@ -26,7 +26,9 @@ function init() {
 
         updateStudentNameUI();
 
-        if (sessionState && sessionState.doc_data) {
+        if (sessionState && sessionState.is_active === false) {
+            showSessionEndedScreen(sessionState.title || "Bài giảng trực tuyến");
+        } else if (sessionState && sessionState.doc_data) {
             const d = sessionState.doc_data;
             if (d.format === 'pptx' || d.format === 'image' || (d.pages && d.pages[0] && d.pages[0].aspect_ratio === '16:9')) {
                 currentFitMode = 'page';
@@ -104,6 +106,12 @@ function connectWebSocket() {
         if (msg.type === 'INIT_STATE') {
             ownClientId = msg.client_id;
             sessionState = msg.state || {};
+            if (sessionState.is_active === false) {
+                showSessionEndedScreen(sessionState.title || "Bài giảng trực tuyến");
+                return;
+            } else {
+                hideSessionEndedScreen();
+            }
             if (sessionState && sessionState.doc_data) {
                 const d = sessionState.doc_data;
                 if (d.format === 'pptx' || d.format === 'image' || (d.pages && d.pages[0] && d.pages[0].aspect_ratio === '16:9')) {
@@ -251,6 +259,28 @@ function connectWebSocket() {
         // 15. Giáo viên tắt micro học sinh cưỡng bức
         else if (msg.type === 'FORCE_MUTE') {
             handleForceMute(msg);
+        }
+
+        // 16. Giáo viên chủ động kết thúc và tắt bài giảng
+        else if (msg.type === 'TEACHER_EXITED') {
+            sessionState.is_active = false;
+            showSessionEndedScreen(sessionState.title || "Bài giảng trực tuyến");
+        }
+
+        // 17. Giáo viên mở lại hoặc bắt đầu bài giảng
+        else if (msg.type === 'TEACHER_STARTED_SESSION') {
+            sessionState = msg.state || sessionState;
+            sessionState.is_active = true;
+            hideSessionEndedScreen();
+            if (sessionState && sessionState.doc_data) {
+                renderPage(sessionState.current_page || 1);
+                if (sessionState.drawings) {
+                    redrawAllStrokes(sessionState.drawings);
+                }
+                if (sessionState.mode) {
+                    switchDisplayMode(sessionState.mode);
+                }
+            }
         }
     };
 
@@ -1184,6 +1214,46 @@ function handlePeerStudentMicStatus(studentId, studentName, active) {
         notice.classList.add('hidden');
     }
 }
+
+// ----------------- SESSION ENDED / INACTIVE SCREEN -----------------
+function showSessionEndedScreen(title) {
+    const screen = document.getElementById('session-ended-screen');
+    const titleEl = document.getElementById('ended-lesson-title');
+    if (titleEl && title) titleEl.textContent = `"${title}"`;
+    if (screen) screen.classList.remove('hidden');
+
+    const stageWrapper = document.getElementById('stage-wrapper');
+    if (stageWrapper) stageWrapper.classList.add('hidden');
+    const floatingTools = document.getElementById('floating-tools');
+    if (floatingTools) floatingTools.classList.add('hidden');
+    const footer = document.querySelector('footer');
+    if (footer) footer.classList.add('hidden');
+    const prompt = document.getElementById('mobile-unmute-prompt');
+    if (prompt) prompt.classList.add('hidden');
+
+    // Tắt micro học sinh nếu đang mở
+    if (typeof isStudentMicActive !== 'undefined' && isStudentMicActive && typeof toggleStudentMicrophone === 'function') {
+        toggleStudentMicrophone();
+    }
+    // Dừng âm thanh giáo viên nếu đang mở
+    if (studentAudioCtx && studentAudioCtx.state === 'running') {
+        try { studentAudioCtx.suspend(); } catch (e) {}
+    }
+}
+window.showSessionEndedScreen = showSessionEndedScreen;
+
+function hideSessionEndedScreen() {
+    const screen = document.getElementById('session-ended-screen');
+    if (screen) screen.classList.add('hidden');
+
+    const stageWrapper = document.getElementById('stage-wrapper');
+    if (stageWrapper) stageWrapper.classList.remove('hidden');
+    const floatingTools = document.getElementById('floating-tools');
+    if (floatingTools) floatingTools.classList.remove('hidden');
+    const footer = document.querySelector('footer');
+    if (footer) footer.classList.remove('hidden');
+}
+window.hideSessionEndedScreen = hideSessionEndedScreen;
 
 window.unlockStudentAudio = unlockStudentAudio;
 window.toggleStudentAudioMute = toggleStudentAudioMute;
