@@ -11,6 +11,23 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .custom-materials-scroll::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-materials-scroll::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 8px;
+        }
+        .custom-materials-scroll::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 8px;
+            border: 2px solid #f1f5f9;
+        }
+        .custom-materials-scroll::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
@@ -83,98 +100,183 @@
         </div>
 
         <!-- TAB 1: KHO HỌC LIỆU SỐ -->
-        <div id="tab-materials" class="space-y-6">
+        <div id="tab-materials" class="space-y-5">
             
-            <!-- Upload Toolbar -->
-            <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div>
-                    <h3 class="text-base font-bold text-slate-800">Tài liệu đã lưu trữ</h3>
-                    <p class="text-xs text-slate-500">Hỗ trợ các định dạng file PDF, PowerPoint (.pptx), Word (.docx)</p>
+            <!-- Upload & Search/Filter Toolbar -->
+            <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <h3 class="text-base sm:text-lg font-extrabold text-slate-800">Kho bài giảng đã lưu trữ</h3>
+                            <span id="filtered-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
+                                <span id="visible-material-count">{{ materials|length }}</span> / {{ materials|length }} bài
+                            </span>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-0.5">Tìm kiếm nhanh, lọc theo môn học & loại file; cuộn trang mượt mà khi có nhiều bài giảng</p>
+                    </div>
+                    <div class="flex items-center space-x-2 w-full sm:w-auto shrink-0">
+                        <button onclick="openUploadModal()" class="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:scale-95 text-white rounded-xl text-sm font-semibold shadow-md shadow-blue-500/20 transition flex items-center justify-center space-x-2">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <span>Tải lên tài liệu mới</span>
+                        </button>
+                    </div>
                 </div>
-                <div class="flex items-center space-x-3 w-full sm:w-auto">
-                    <button onclick="openUploadModal()" class="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold shadow-sm transition flex items-center justify-center space-x-2">
-                        <i class="fa-solid fa-cloud-arrow-up"></i>
-                        <span>Tải lên tài liệu mới</span>
-                    </button>
+
+                <!-- Bộ lọc: Tìm kiếm theo tên + Lọc theo Môn + Lọc theo Loại File + Đặt lại -->
+                <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-3 border-t border-slate-100 items-center">
+                    <!-- Ô tìm kiếm từ khóa bài học -->
+                    <div class="sm:col-span-5 relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                        <input type="text" id="filter-search" oninput="applyMaterialFilters()" placeholder="Tìm nhanh theo tên bài giảng..." class="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition">
+                        <button onclick="clearSearchInput()" id="btn-clear-search" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 hidden text-xs">
+                            <i class="fa-solid fa-circle-xmark"></i>
+                        </button>
+                    </div>
+
+                    <!-- Lọc theo Môn học -->
+                    <div class="sm:col-span-3">
+                        <div class="relative">
+                            <i class="fa-solid fa-book-open absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none"></i>
+                            <select id="filter-subject" onchange="applyMaterialFilters()" class="w-full pl-8 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition appearance-none cursor-pointer">
+                                <option value="all">📚 Tất cả môn học</option>
+                            </select>
+                            <i class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] pointer-events-none"></i>
+                        </div>
+                    </div>
+
+                    <!-- Lọc theo Loại file -->
+                    <div class="sm:col-span-3">
+                        <div class="relative">
+                            <i class="fa-solid fa-file-lines absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none"></i>
+                            <select id="filter-format" onchange="applyMaterialFilters()" class="w-full pl-8 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition appearance-none cursor-pointer">
+                                <option value="all">📁 Tất cả định dạng file</option>
+                                <option value="pptx">📊 PowerPoint (.pptx, .ppt)</option>
+                                <option value="pdf">📕 Tài liệu PDF (.pdf)</option>
+                                <option value="docx">📄 Văn bản Word (.docx, .doc)</option>
+                                <option value="image">🖼️ Hình ảnh (.png, .jpg)</option>
+                            </select>
+                            <i class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] pointer-events-none"></i>
+                        </div>
+                    </div>
+
+                    <!-- Nút Đặt lại bộ lọc -->
+                    <div class="sm:col-span-1 flex items-center">
+                        <button onclick="resetMaterialFilters()" type="button" class="w-full py-2 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-600 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1" title="Đặt lại bộ lọc về mặc định">
+                            <i class="fa-solid fa-arrow-rotate-left text-xs"></i>
+                            <span class="sm:hidden ml-1">Đặt lại</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Nút lọc nhanh dạng Tab Chips -->
+                <div class="flex items-center space-x-1.5 overflow-x-auto no-scrollbar pt-1 text-xs">
+                    <span class="text-slate-400 font-medium text-[11px] shrink-0 mr-1"><i class="fa-solid fa-filter text-[10px] mr-1"></i>Lọc nhanh:</span>
+                    <button onclick="setQuickFormatFilter('all')" class="quick-fmt-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-600 text-white transition shrink-0 shadow-sm" data-fmt="all">Tất cả</button>
+                    <button onclick="setQuickFormatFilter('pptx')" class="quick-fmt-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition shrink-0" data-fmt="pptx">📊 PowerPoint</button>
+                    <button onclick="setQuickFormatFilter('pdf')" class="quick-fmt-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition shrink-0" data-fmt="pdf">📕 PDF</button>
+                    <button onclick="setQuickFormatFilter('docx')" class="quick-fmt-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition shrink-0" data-fmt="docx">📄 Word</button>
+                    <button onclick="setQuickFormatFilter('image')" class="quick-fmt-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition shrink-0" data-fmt="image">🖼️ Hình ảnh</button>
                 </div>
             </div>
 
-            <!-- List of Materials -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" id="materials-grid">
-                {% for item in materials %}
-                <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between group">
-                    <div>
-                        <div class="flex items-start justify-between mb-3">
-                            <div class="w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold shadow-sm
-                                {% if item.format == 'pdf' %} bg-red-50 text-red-600 border border-red-200
-                                {% elif item.format == 'pptx' or item.format == 'ppt' %} bg-amber-50 text-amber-600 border border-amber-200
-                                {% else %} bg-blue-50 text-blue-600 border border-blue-200 {% endif %}">
-                                {% if item.format == 'pdf' %}<i class="fa-solid fa-file-pdf"></i>
-                                {% elif item.format == 'pptx' or item.format == 'ppt' %}<i class="fa-solid fa-file-powerpoint"></i>
-                                {% else %}<i class="fa-solid fa-file-word"></i>{% endif %}
+            <!-- THANH CUỘN LƯU BÀI GIẢNG (Scrollable container for materials) -->
+            <div id="materials-scroll-container" class="max-h-[640px] sm:max-h-[720px] overflow-y-auto pr-1 sm:pr-2 custom-materials-scroll">
+                <!-- List of Materials -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" id="materials-grid">
+                    {% for item in materials %}
+                    <div class="material-card bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between group"
+                         data-id="{{ item.id }}"
+                         data-title="{{ item.title | lower }}"
+                         data-subject="{{ item.subject | lower }}"
+                         data-raw-subject="{{ item.subject }}"
+                         data-format="{{ item.format | lower }}">
+                        <div>
+                            <div class="flex items-start justify-between mb-3">
+                                <div class="w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold shadow-sm
+                                    {% if item.format == 'pdf' %} bg-red-50 text-red-600 border border-red-200
+                                    {% elif item.format == 'pptx' or item.format == 'ppt' %} bg-amber-50 text-amber-600 border border-amber-200
+                                    {% elif item.format in ['png', 'jpg', 'jpeg', 'webp'] %} bg-emerald-50 text-emerald-600 border border-emerald-200
+                                    {% else %} bg-blue-50 text-blue-600 border border-blue-200 {% endif %}">
+                                    {% if item.format == 'pdf' %}<i class="fa-solid fa-file-pdf"></i>
+                                    {% elif item.format == 'pptx' or item.format == 'ppt' %}<i class="fa-solid fa-file-powerpoint"></i>
+                                    {% elif item.format in ['png', 'jpg', 'jpeg', 'webp'] %}<i class="fa-solid fa-file-image"></i>
+                                    {% else %}<i class="fa-solid fa-file-word"></i>{% endif %}
+                                </div>
+                                <span class="text-xs px-2.5 py-1 bg-slate-100 text-slate-600 font-semibold rounded-full uppercase">
+                                    {{ item.format }} • {{ item.size_kb }} KB
+                                </span>
                             </div>
-                            <span class="text-xs px-2.5 py-1 bg-slate-100 text-slate-600 font-semibold rounded-full uppercase">
-                                {{ item.format }} • {{ item.size_kb }} KB
-                            </span>
+                            <h4 class="font-bold text-slate-800 text-base mb-1 line-clamp-1 group-hover:text-blue-600 transition" title="{{ item.title }}">{{ item.title }}</h4>
+                            <div class="flex items-center space-x-3 text-xs text-slate-500 mb-4">
+                                <span><i class="fa-solid fa-book-open mr-1 text-blue-500"></i>{{ item.subject }}</span>
+                                <span>•</span>
+                                <span><i class="fa-solid fa-users mr-1"></i>Lớp {{ item.grade }}</span>
+                                <span>•</span>
+                                <span>{{ item.created_at }}</span>
+                            </div>
                         </div>
-                        <h4 class="font-bold text-slate-800 text-base mb-1 line-clamp-1 group-hover:text-blue-600 transition">{{ item.title }}</h4>
-                        <div class="flex items-center space-x-3 text-xs text-slate-500 mb-4">
-                            <span><i class="fa-solid fa-book-open mr-1"></i>{{ item.subject }}</span>
-                            <span>•</span>
-                            <span><i class="fa-solid fa-users mr-1"></i>Lớp {{ item.grade }}</span>
-                            <span>•</span>
-                            <span>{{ item.created_at }}</span>
-                        </div>
-                    </div>
 
-                    <!-- KHUNG LINK CỐ ĐỊNH DUY NHẤT CHO BÀI GIẢNG NÀY (DẠY MỌI LỚP) -->
-                    <div class="my-3 p-3 bg-blue-50/70 border border-blue-200/80 rounded-2xl">
-                        <div class="flex items-center justify-between mb-1.5">
-                            <span class="text-[11px] font-bold text-blue-900 flex items-center space-x-1.5">
-                                <i class="fa-solid fa-link text-blue-600"></i>
-                                <span>Link học sinh cố định:</span>
-                            </span>
-                            <span class="text-[9px] font-bold px-2 py-0.2 bg-emerald-100 text-emerald-700 rounded-full">Dạy mọi lớp</span>
+                        <!-- KHUNG LINK CỐ ĐỊNH DUY NHẤT CHO BÀI GIẢNG NÀY (DẠY MỌI LỚP) -->
+                        <div class="my-3 p-3 bg-blue-50/70 border border-blue-200/80 rounded-2xl">
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span class="text-[11px] font-bold text-blue-900 flex items-center space-x-1.5">
+                                    <i class="fa-solid fa-link text-blue-600"></i>
+                                    <span>Link học sinh cố định:</span>
+                                </span>
+                                <span class="text-[9px] font-bold px-2 py-0.2 bg-emerald-100 text-emerald-700 rounded-full">Dạy mọi lớp</span>
+                            </div>
+                            <div class="flex items-center space-x-1.5">
+                                <input type="text" readonly data-material-id="{{ item.id }}" class="material-share-input flex-1 bg-white border border-blue-200 rounded-xl px-2.5 py-1.5 text-xs font-mono text-slate-700 select-all focus:outline-none truncate">
+                                <button type="button" onclick="copyMaterialLink(this, '{{ item.id }}')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center space-x-1 shrink-0" title="Sao chép link gửi cho cả lớp">
+                                    <i class="fa-solid fa-copy"></i>
+                                    <span>Chép</span>
+                                </button>
+                                <button type="button" onclick="showMaterialQR('{{ item.id }}', '{{ item.title }}')" class="p-1.5 px-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition shrink-0" title="Hiện mã QR để chiếu cho học sinh quét">
+                                    <i class="fa-solid fa-qrcode text-blue-600"></i>
+                                </button>
+                            </div>
                         </div>
-                        <div class="flex items-center space-x-1.5">
-                            <input type="text" readonly data-material-id="{{ item.id }}" class="material-share-input flex-1 bg-white border border-blue-200 rounded-xl px-2.5 py-1.5 text-xs font-mono text-slate-700 select-all focus:outline-none truncate">
-                            <button type="button" onclick="copyMaterialLink(this, '{{ item.id }}')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center space-x-1 shrink-0" title="Sao chép link gửi cho cả lớp">
-                                <i class="fa-solid fa-copy"></i>
-                                <span>Chép</span>
-                            </button>
-                            <button type="button" onclick="showMaterialQR('{{ item.id }}', '{{ item.title }}')" class="p-1.5 px-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition shrink-0" title="Hiện mã QR để chiếu cho học sinh quét">
-                                <i class="fa-solid fa-qrcode text-blue-600"></i>
-                            </button>
-                        </div>
-                    </div>
 
-                    <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
-                        <a href="/teacher/room_{{ item.id }}" class="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow flex items-center space-x-1.5 transition">
-                            <i class="fa-solid fa-desktop"></i>
-                            <span>Bắt đầu trình chiếu</span>
-                        </a>
-                        <div class="flex items-center space-x-1">
-                            <a href="/files/{{ item.filename }}" download class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="Tải file gốc">
-                                <i class="fa-solid fa-download"></i>
+                        <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+                            <a href="/teacher/room_{{ item.id }}" class="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow flex items-center space-x-1.5 transition">
+                                <i class="fa-solid fa-desktop"></i>
+                                <span>Bắt đầu trình chiếu</span>
                             </a>
-                            <button onclick="deleteMaterial('{{ item.id }}')" class="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Xóa tài liệu">
-                                <i class="fa-solid fa-trash-can"></i>
-                            </button>
+                            <div class="flex items-center space-x-1">
+                                <a href="/files/{{ item.filename }}" download class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="Tải file gốc">
+                                    <i class="fa-solid fa-download"></i>
+                                </a>
+                                <button onclick="deleteMaterial('{{ item.id }}')" class="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Xóa tài liệu">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-                {% else %}
-                <div class="col-span-full py-12 text-center bg-white rounded-2xl border border-dashed border-slate-300">
-                    <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-2xl mx-auto mb-3">
-                        <i class="fa-solid fa-folder-open"></i>
+                    {% else %}
+                    <div class="col-span-full py-12 text-center bg-white rounded-2xl border border-dashed border-slate-300">
+                        <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-2xl mx-auto mb-3">
+                            <i class="fa-solid fa-folder-open"></i>
+                        </div>
+                        <h4 class="font-bold text-slate-700 text-base mb-1">Chưa có học liệu nào</h4>
+                        <p class="text-xs text-slate-500 mb-4">Hãy tải lên tài liệu PDF/PPTX/Word hoặc tạo bài giảng bằng AI!</p>
+                        <button onclick="openUploadModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow transition">
+                            Tải lên tài liệu ngay
+                        </button>
                     </div>
-                    <h4 class="font-bold text-slate-700 text-base mb-1">Chưa có học liệu nào</h4>
-                    <p class="text-xs text-slate-500 mb-4">Hãy tải lên tài liệu PDF/PPTX/Word hoặc tạo bài giảng bằng AI!</p>
-                    <button onclick="openUploadModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow transition">
-                        Tải lên tài liệu ngay
+                    {% endfor %}
+                </div>
+
+                <!-- THÔNG BÁO KHI LỌC KHÔNG CÓ KẾT QUẢ -->
+                <div id="materials-no-filter-results" class="py-12 text-center bg-white rounded-2xl border border-dashed border-slate-300 hidden my-4">
+                    <div class="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-2xl mx-auto mb-3">
+                        <i class="fa-solid fa-filter-circle-xmark"></i>
+                    </div>
+                    <h4 class="font-bold text-slate-700 text-sm mb-1">Không tìm thấy bài giảng phù hợp</h4>
+                    <p class="text-xs text-slate-500 mb-4">Không có bài giảng nào khớp với từ khóa tìm kiếm hoặc môn học bạn đã chọn.</p>
+                    <button onclick="resetMaterialFilters()" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition">
+                        <i class="fa-solid fa-arrow-rotate-left mr-1"></i> Xem lại tất cả bài giảng
                     </button>
                 </div>
-                {% endfor %}
             </div>
         </div>
 
@@ -501,6 +603,122 @@ V. HƯỚNG DẪN VỀ NHÀ
             });
         }
 
+        // ----------------- TÌM KIẾM & BỘ LỌC HỌC LIỆU -----------------
+        function applyMaterialFilters() {
+            const searchVal = (document.getElementById('filter-search')?.value || '').trim().toLowerCase();
+            const subjectVal = (document.getElementById('filter-subject')?.value || 'all').toLowerCase();
+            const formatVal = (document.getElementById('filter-format')?.value || 'all').toLowerCase();
+
+            const clearBtn = document.getElementById('btn-clear-search');
+            if (clearBtn) {
+                if (searchVal) clearBtn.classList.remove('hidden');
+                else clearBtn.classList.add('hidden');
+            }
+
+            const cards = document.querySelectorAll('.material-card');
+            let visibleCount = 0;
+
+            cards.forEach(card => {
+                const title = card.dataset.title || '';
+                const subject = card.dataset.subject || '';
+                const format = card.dataset.format || '';
+
+                const matchSearch = !searchVal || title.includes(searchVal) || subject.includes(searchVal);
+                const matchSubject = subjectVal === 'all' || subject === subjectVal || subject.includes(subjectVal);
+
+                let matchFormat = false;
+                if (formatVal === 'all') {
+                    matchFormat = true;
+                } else if (formatVal === 'pptx') {
+                    matchFormat = (format === 'pptx' || format === 'ppt');
+                } else if (formatVal === 'docx') {
+                    matchFormat = (format === 'docx' || format === 'doc');
+                } else if (formatVal === 'image') {
+                    matchFormat = (format === 'png' || format === 'jpg' || format === 'jpeg' || format === 'webp');
+                } else {
+                    matchFormat = (format === formatVal);
+                }
+
+                if (matchSearch && matchSubject && matchFormat) {
+                    card.classList.remove('hidden');
+                    visibleCount++;
+                } else {
+                    card.classList.add('hidden');
+                }
+            });
+
+            const countEl = document.getElementById('visible-material-count');
+            if (countEl) countEl.textContent = visibleCount;
+
+            const noResultsEl = document.getElementById('materials-no-filter-results');
+            if (noResultsEl) {
+                if (visibleCount === 0 && cards.length > 0) {
+                    noResultsEl.classList.remove('hidden');
+                } else {
+                    noResultsEl.classList.add('hidden');
+                }
+            }
+        }
+
+        function resetMaterialFilters() {
+            const searchInput = document.getElementById('filter-search');
+            const subjectSelect = document.getElementById('filter-subject');
+            const formatSelect = document.getElementById('filter-format');
+            if (searchInput) searchInput.value = '';
+            if (subjectSelect) subjectSelect.value = 'all';
+            if (formatSelect) formatSelect.value = 'all';
+            setQuickFormatFilter('all', false);
+            applyMaterialFilters();
+        }
+
+        function clearSearchInput() {
+            const searchInput = document.getElementById('filter-search');
+            if (searchInput) searchInput.value = '';
+            applyMaterialFilters();
+        }
+
+        function setQuickFormatFilter(fmt, trigger = true) {
+            const formatSelect = document.getElementById('filter-format');
+            if (formatSelect) formatSelect.value = fmt;
+
+            document.querySelectorAll('.quick-fmt-btn').forEach(btn => {
+                if (btn.dataset.fmt === fmt) {
+                    btn.className = "quick-fmt-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-600 text-white transition shrink-0 shadow-sm";
+                } else {
+                    btn.className = "quick-fmt-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition shrink-0";
+                }
+            });
+
+            if (trigger) applyMaterialFilters();
+        }
+
+        function populateSubjectDropdown() {
+            const select = document.getElementById('filter-subject');
+            if (!select) return;
+
+            const subjects = new Set();
+            document.querySelectorAll('.material-card').forEach(c => {
+                const s = c.dataset.rawSubject;
+                if (s && s.trim()) subjects.add(s.trim());
+            });
+
+            // Các môn phổ biến
+            const defaultSubjects = ['Toán học', 'Vật lý', 'Hóa học', 'Sinh học', 'Ngữ văn', 'Lịch sử', 'Địa lý', 'Tiếng Anh', 'Tin học'];
+            defaultSubjects.forEach(s => subjects.add(s));
+
+            // Giữ lại option đầu tiên "Tất cả môn học"
+            while (select.options.length > 1) {
+                select.remove(1);
+            }
+
+            Array.from(subjects).sort((a, b) => a.localeCompare(b, 'vi')).forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.toLowerCase();
+                opt.textContent = `📖 ${s}`;
+                select.appendChild(opt);
+            });
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
             const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
             const badgeTitle = document.getElementById('badge-title');
@@ -517,6 +735,9 @@ V. HƯỚNG DẪN VỀ NHÀ
                     input.value = `${window.location.origin}/view/${matId}`;
                 }
             });
+
+            // Khởi tạo danh sách môn học cho bộ lọc
+            populateSubjectDropdown();
         });
     </script>
 </body>
