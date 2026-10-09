@@ -215,14 +215,10 @@
                 Thầy/Cô đã kết thúc phiên trình chiếu bài giảng <span id="ended-lesson-title" class="font-bold text-slate-200">"{{ room_title }}"</span>. Hiện tại bài giảng này không còn được trình chiếu.
             </p>
 
-            <div class="flex items-center space-x-3 w-full">
-                <a href="/" class="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center space-x-2 shadow-lg shadow-blue-600/30">
-                    <i class="fa-solid fa-house"></i>
-                    <span>Về trang chủ</span>
-                </a>
-                <button onclick="location.reload()" type="button" class="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center space-x-1.5 border border-slate-700 cursor-pointer">
+            <div class="flex items-center justify-center w-full">
+                <button onclick="location.reload()" type="button" class="w-full py-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center space-x-2 border border-slate-700 cursor-pointer shadow-md">
                     <i class="fa-solid fa-rotate-right"></i>
-                    <span>Tải lại</span>
+                    <span>Tải lại trang</span>
                 </button>
             </div>
 
@@ -334,6 +330,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/student.js?v=18"></script>
+    <script src="/static/js/student.js?v=19"></script>
 </body>
 </html>
