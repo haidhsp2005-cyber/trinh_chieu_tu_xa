@@ -657,7 +657,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
 
 async def _broadcast_to_students(session: ClassroomSession, payload: dict):
     disconnected = []
-    for cid, ws in session.students.items():
+    for cid, ws in list(session.students.items()):
         try:
             await ws.send_json(payload)
         except Exception:

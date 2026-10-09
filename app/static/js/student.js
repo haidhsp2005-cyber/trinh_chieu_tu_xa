@@ -580,6 +580,7 @@ function toggleFullScreen() {
 
 // ----------------- REAL-TIME AUDIO BROADCAST RECEIVER (PCM WEB AUDIO) -----------------
 let studentAudioCtx = null;
+let studentMasterGain = null;
 let isStudentMuted = false;
 let audioUnlocked = false;
 let nextAudioPlayTime = 0;
@@ -590,6 +591,9 @@ function initOrResumeStudentAudioContext() {
         if (AudioCtx) {
             if (!studentAudioCtx) {
                 studentAudioCtx = new AudioCtx();
+                studentMasterGain = studentAudioCtx.createGain();
+                studentMasterGain.gain.value = 1.6; // Khuếch đại âm lượng giọng nói Thầy/Cô rõ ràng
+                studentMasterGain.connect(studentAudioCtx.destination);
             }
             if (studentAudioCtx.state === 'suspended') {
                 studentAudioCtx.resume().catch(() => {});
@@ -608,18 +612,40 @@ function unlockStudentAudio() {
         prompt.style.display = 'none';
     }
 
-    initOrResumeStudentAudioContext();
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!studentAudioCtx) {
+            studentAudioCtx = new AudioCtx();
+            studentMasterGain = studentAudioCtx.createGain();
+            studentMasterGain.gain.value = 1.6;
+            studentMasterGain.connect(studentAudioCtx.destination);
+        }
+        if (studentAudioCtx.state === 'suspended') {
+            studentAudioCtx.resume();
+        }
+        // Phát một xung đệm âm thanh siêu nhỏ (1 mẫu) để kích hoạt phần cứng âm thanh trên điện thoại iOS & Android
+        const silentBuf = studentAudioCtx.createBuffer(1, 1, 22050);
+        const src = studentAudioCtx.createBufferSource();
+        src.buffer = silentBuf;
+        src.connect(studentAudioCtx.destination);
+        src.start(0);
+    } catch (e) {
+        console.warn("AudioContext unlock error:", e);
+    }
+
+    nextAudioPlayTime = 0;
     updateStudentAudioUI();
     console.log("Audio pipeline successfully unlocked on student device!");
 }
 
-// Tự động mở khoá Audio ngay khi học sinh chạm hoặc nhấp bất cứ đâu trên trang
-document.addEventListener('click', () => {
-    if (!audioUnlocked) unlockStudentAudio();
-}, { passive: true });
-document.addEventListener('touchstart', () => {
-    if (!audioUnlocked) unlockStudentAudio();
-}, { passive: true });
+// Tự động mở khoá Audio ngay khi học sinh chạm, click hoặc tương tác bất cứ đâu trên trang
+['click', 'touchstart', 'touchend', 'pointerdown', 'mousedown', 'keydown'].forEach(evt => {
+    window.addEventListener(evt, () => {
+        if (!audioUnlocked || (studentAudioCtx && studentAudioCtx.state === 'suspended')) {
+            unlockStudentAudio();
+        }
+    }, { passive: true });
+});
 
 function toggleStudentAudioMute() {
     if (!audioUnlocked) {
@@ -677,8 +703,25 @@ function handleIncomingAudioChunk(msg) {
     // Chống vọng âm: Khi học sinh đang bật micro phát biểu, tạm dừng phát loa để tránh mic thu lại tiếng từ loa gây hú/vọng
     if (isStudentMicActive) return;
 
-    // Hiển thị nút bật tiếng nếu chưa được mở khoá trên điện thoại
-    if (!audioUnlocked) {
+    // Khởi tạo AudioContext nếu chưa có
+    if (!studentAudioCtx) {
+        initOrResumeStudentAudioContext();
+    }
+
+    if (studentAudioCtx && studentAudioCtx.state === 'suspended') {
+        studentAudioCtx.resume().catch(() => {});
+    }
+
+    // Nếu AudioContext đã ở trạng thái chạy (running) trên máy tính/điện thoại, tự động mở khóa
+    if (studentAudioCtx && studentAudioCtx.state === 'running') {
+        audioUnlocked = true;
+        const prompt = document.getElementById('mobile-unmute-prompt');
+        if (prompt) {
+            prompt.classList.add('hidden');
+            prompt.style.display = 'none';
+        }
+    } else if (!audioUnlocked) {
+        // Chỉ hiện thông báo nếu trình duyệt di động cưỡng bức chặn autoplay
         const prompt = document.getElementById('mobile-unmute-prompt');
         if (prompt) {
             prompt.classList.remove('hidden');
@@ -687,23 +730,21 @@ function handleIncomingAudioChunk(msg) {
         return;
     }
 
-    initOrResumeStudentAudioContext();
-    if (!studentAudioCtx) return;
-
     const pcmBase64 = msg.pcm;
     if (!pcmBase64) return;
 
     try {
         const binaryStr = atob(pcmBase64);
         const len = binaryStr.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            bytes[i] = binaryStr.charCodeAt(i);
-        }
-        const int16 = new Int16Array(bytes.buffer);
-        const float32 = new Float32Array(int16.length);
-        for (let i = 0; i < int16.length; i++) {
-            float32[i] = int16[i] / 32768.0;
+        const samplesCount = Math.floor(len / 2);
+        if (samplesCount === 0) return;
+
+        const float32 = new Float32Array(samplesCount);
+        for (let i = 0; i < samplesCount; i++) {
+            const byteIndex = i * 2;
+            let val = binaryStr.charCodeAt(byteIndex) | (binaryStr.charCodeAt(byteIndex + 1) << 8);
+            if (val >= 32768) val -= 65536;
+            float32[i] = val / 32768.0;
         }
 
         const sampleRate = msg.sample_rate || 16000;
@@ -712,11 +753,17 @@ function handleIncomingAudioChunk(msg) {
 
         const source = studentAudioCtx.createBufferSource();
         source.buffer = audioBuffer;
-        source.connect(studentAudioCtx.destination);
+
+        if (!studentMasterGain) {
+            studentMasterGain = studentAudioCtx.createGain();
+            studentMasterGain.gain.value = 1.6;
+            studentMasterGain.connect(studentAudioCtx.destination);
+        }
+        source.connect(studentMasterGain);
 
         const now = studentAudioCtx.currentTime;
-        if (nextAudioPlayTime < now || (nextAudioPlayTime - now) > 0.35) {
-            nextAudioPlayTime = now + 0.04;
+        if (nextAudioPlayTime < now || (nextAudioPlayTime - now) > 0.4) {
+            nextAudioPlayTime = now + 0.03;
         }
 
         source.start(nextAudioPlayTime);

@@ -801,8 +801,6 @@ async function toggleMicrophone() {
 
             micScriptNode.onaudioprocess = (e) => {
                 if (!isMicActive) return;
-                // Chống vọng âm phản hồi: Khi có học sinh đang phát biểu, tạm dừng gửi mic giáo viên để tránh thu lại tiếng từ loa ngoài
-                if (currentSpeakingStudentId) return;
                 const inputData = e.inputBuffer.getChannelData(0);
 
                 // Đo âm lượng giọng nói để tạo hiệu ứng nhấp nháy cho Thầy/Cô
