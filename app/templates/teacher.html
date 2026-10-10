@@ -487,6 +487,9 @@
         </div>
     </div>
 
+    <!-- Realtime Live Toasts Container -->
+    <div id="live-toast-container" class="fixed bottom-20 right-4 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
     <!-- INITIAL SESSION DATA INJECTION -->
     <script>
         window.INITIAL_SESSION = {{ session | tojson }};
@@ -496,6 +499,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/teacher.js?v=23"></script>
+    <script src="/static/js/teacher.js?v=24"></script>
 </body>
 </html>

@@ -37,6 +37,8 @@ async def health_ping():
 async def root_head():
     return Response(status_code=200)
 
+_render_lock = asyncio.Lock()
+
 @app.get("/cache/{doc_id}/{filename}")
 async def serve_cached_slide(doc_id: str, filename: str):
     import urllib.parse
@@ -49,43 +51,50 @@ async def serve_cached_slide(doc_id: str, filename: str):
         if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
             return FileResponse(file_path, headers=headers)
 
-    # 2. Nếu chưa có ảnh, render tức thì on-demand trong ~50ms
+    # 2. Nếu chưa có ảnh, render tức thì on-demand an toàn tuyệt đối với lock tránh race condition
     if filename.startswith("page_") and filename.endswith(".png"):
-        try:
-            page_num_str = filename.replace("page_", "").replace(".png", "")
-            page_index = int(page_num_str) - 1
-
-            doc_dir = None
+        async with _render_lock:
+            # Kiểm tra lại đề phòng luồng trước vừa render xong trong lúc chờ lock
             for cid in [doc_id, decoded_doc_id]:
-                d = os.path.join(CACHE_DIR, cid)
-                if os.path.isdir(d):
-                    doc_dir = d
-                    break
+                file_path = os.path.join(CACHE_DIR, cid, filename)
+                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                    return FileResponse(file_path, headers=headers)
 
-            if doc_dir:
-                temp_pdf = os.path.join(doc_dir, "exported_slides.pdf")
-                if not os.path.exists(temp_pdf):
-                    candidates = [os.path.join(doc_dir, f) for f in os.listdir(doc_dir) if f.endswith(".pdf")]
-                    if candidates:
-                        temp_pdf = candidates[0]
+            try:
+                page_num_str = filename.replace("page_", "").replace(".png", "")
+                page_index = int(page_num_str) - 1
 
-                if os.path.exists(temp_pdf):
-                    import pymupdf
-                    doc = pymupdf.open(temp_pdf)
-                    target_file = os.path.join(doc_dir, filename)
-                    if page_index < len(doc):
-                        mat = pymupdf.Matrix(1.6, 1.6)
-                        pix = doc[page_index].get_pixmap(matrix=mat, alpha=False)
-                        tmp_file_path = f"{target_file}.tmp.png"
-                        pix.save(tmp_file_path, output="png")
-                        os.replace(tmp_file_path, target_file)
-                        del pix
-                    doc.close()
-                    del doc
-                    if os.path.exists(target_file):
-                        return FileResponse(target_file, headers=headers)
-        except Exception as e:
-            print(f"On-demand slide render error: {e}")
+                doc_dir = None
+                for cid in [doc_id, decoded_doc_id]:
+                    d = os.path.join(CACHE_DIR, cid)
+                    if os.path.isdir(d):
+                        doc_dir = d
+                        break
+
+                if doc_dir:
+                    temp_pdf = os.path.join(doc_dir, "exported_slides.pdf")
+                    if not os.path.exists(temp_pdf):
+                        candidates = [os.path.join(doc_dir, f) for f in os.listdir(doc_dir) if f.endswith(".pdf")]
+                        if candidates:
+                            temp_pdf = candidates[0]
+
+                    if os.path.exists(temp_pdf):
+                        import pymupdf
+                        doc = pymupdf.open(temp_pdf)
+                        target_file = os.path.join(doc_dir, filename)
+                        if page_index < len(doc):
+                            mat = pymupdf.Matrix(1.6, 1.6)
+                            pix = doc[page_index].get_pixmap(matrix=mat, alpha=False)
+                            unique_tmp = f"{target_file}.{uuid.uuid4().hex}.tmp.png"
+                            pix.save(unique_tmp, output="png")
+                            os.replace(unique_tmp, target_file)
+                            del pix
+                        doc.close()
+                        del doc
+                        if os.path.exists(target_file):
+                            return FileResponse(target_file, headers=headers)
+            except Exception as e:
+                print(f"On-demand slide render error: {e}")
 
     for cid in [doc_id, decoded_doc_id]:
         fp = os.path.join(CACHE_DIR, cid, filename)
@@ -469,15 +478,12 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
         "active_teacher_title": active_teacher_title
     })
 
-    # Báo cho giáo viên số lượng học sinh cập nhật
-    if session.teacher_ws:
-        try:
-            await session.teacher_ws.send_json({
-                "type": "STUDENT_COUNT",
-                "count": len(session.students)
-            })
-        except Exception:
-            pass
+    # Báo cho giáo viên và toàn bộ học sinh số lượng đang xem (Realtime)
+    await _broadcast_to_all(session, {
+        "type": "STUDENT_COUNT",
+        "count": len(session.students),
+        "event": "JOIN" if role == "student" else "TEACHER_INIT"
+    })
 
     try:
         while True:
@@ -499,6 +505,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
             elif msg_type == "PAGE_CHANGE":
                 page = data.get("page", 1)
                 session.current_page = page
+                session.drawings = []
                 session.laser = {"x": -1, "y": -1, "active": False}
                 # Phát cho toàn bộ học sinh
                 await _broadcast_to_students(session, {
@@ -765,14 +772,13 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
                     "active": False
                 })
 
-        if session.teacher_ws:
-            try:
-                await session.teacher_ws.send_json({
-                    "type": "STUDENT_COUNT",
-                    "count": len(session.students)
-                })
-            except Exception:
-                pass
+        # Báo cho giáo viên và toàn bộ học sinh số lượng cập nhật ngay khi có học sinh thoát ra
+        if role == "student":
+            await _broadcast_to_all(session, {
+                "type": "STUDENT_COUNT",
+                "count": len(session.students),
+                "event": "LEAVE"
+            })
 
 async def _broadcast_to_students(session: ClassroomSession, payload: dict):
     disconnected = []

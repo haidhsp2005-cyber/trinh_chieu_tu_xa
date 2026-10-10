@@ -101,6 +101,13 @@
         </div>
 
         <div class="flex items-center space-x-1.5 sm:space-x-2.5 shrink-0">
+            <!-- Số lượng học sinh đang cùng xem -->
+            <div id="student-counter" class="hidden sm:flex items-center space-x-1 px-2 py-0.5 rounded-full bg-slate-800/80 border border-slate-700 text-[10px] sm:text-[11px] text-slate-300 font-semibold shrink-0" title="Số học sinh đang cùng xem bài giảng">
+                <i class="fa-solid fa-users text-blue-400"></i>
+                <span id="student-count-val">0</span>
+                <span class="hidden md:inline"> HS</span>
+            </div>
+
             <!-- Nút bật/tắt Micro phát biểu của Học Sinh -->
             <button id="btn-student-mic" onclick="toggleStudentMicrophone()" type="button" class="px-2 sm:px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-full text-[10px] sm:text-[11px] font-bold flex items-center space-x-1 transition cursor-pointer" title="Bật/Tắt Micro để phát biểu trả lời Thầy/Cô">
                 <i id="student-mic-icon" class="fa-solid fa-microphone-slash text-slate-400"></i>
@@ -336,6 +343,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/student.js?v=23"></script>
+    <script src="/static/js/student.js?v=24"></script>
 </body>
 </html>

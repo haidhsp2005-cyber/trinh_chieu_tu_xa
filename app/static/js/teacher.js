@@ -72,6 +72,37 @@ function setupCanvasResolution() {
     }
 }
 
+// ----------------- TOAST NOTIFICATIONS (Thông báo trực quan thời gian thực) -----------------
+function showLiveNotification(text, type = 'info', icon = 'fa-circle-info') {
+    let container = document.getElementById('live-toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'live-toast-container';
+        container.className = 'fixed bottom-20 right-4 z-50 flex flex-col space-y-2 pointer-events-none';
+        document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    const colorClasses = {
+        join: 'bg-emerald-950/90 border-emerald-500/60 text-emerald-200 shadow-emerald-950/50',
+        leave: 'bg-amber-950/90 border-amber-500/60 text-amber-200 shadow-amber-950/50',
+        chat: 'bg-cyan-950/90 border-cyan-500/60 text-cyan-200 shadow-cyan-950/50',
+        info: 'bg-slate-900/90 border-slate-700 text-white shadow-slate-950/50'
+    }[type] || 'bg-slate-900/90 border-slate-700 text-white';
+
+    toast.className = `flex items-center space-x-2.5 px-3.5 py-2 rounded-xl border shadow-xl text-xs font-semibold backdrop-blur transition-all duration-300 transform translate-y-2 opacity-0 pointer-events-auto ${colorClasses}`;
+    toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${text}</span>`;
+    container.appendChild(toast);
+
+    requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+    });
+
+    setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 350);
+    }, 4000);
+}
+
 // ----------------- WEBSOCKET REALTIME -----------------
 
 function connectWebSocket() {
@@ -103,12 +134,22 @@ function connectWebSocket() {
         } else if (msg.type === 'STUDENT_COUNT') {
             const el = document.getElementById('student-counter');
             if (el) el.textContent = msg.count;
+            if (msg.event === 'JOIN') {
+                showLiveNotification(`+1 Học sinh vừa vào phòng (${msg.count} đang xem)`, 'join', 'fa-user-plus');
+            } else if (msg.event === 'LEAVE') {
+                showLiveNotification(`-1 Học sinh vừa rời phòng (${msg.count} đang xem)`, 'leave', 'fa-user-minus');
+            }
         } else if (msg.type === 'CHAT_LOCK_STATUS') {
             updateChatLockUI(msg.chat_enabled);
         } else if (msg.type === 'STUDENT_MIC_LOCK_STATUS') {
             updateStudentMicLockUI(msg.allowed);
         } else if (msg.type === 'CHAT_MESSAGE') {
             handleIncomingChatMessage(msg.message);
+            if (!isChatOpen && msg.message) {
+                const sName = msg.message.sender || 'Học sinh';
+                const sText = (msg.message.text || '').substring(0, 45);
+                showLiveNotification(`${sName}: ${sText}`, 'chat', 'fa-comment-dots');
+            }
         } else if (msg.type === 'STUDENT_MIC_STATUS') {
             handleStudentMicStatus(msg.student_id, msg.student_name, msg.active);
         } else if (msg.type === 'STUDENT_AUDIO_CHUNK') {
@@ -224,70 +265,21 @@ function handleScroll(e) {
     }
 }
 
-// ----------------- CACHE & TUẦN TỰ PRELOAD SLIDES (0ms Chuyển Trang) -----------------
-const slideImageCache = new Map();
-let preloadQueue = [];
-let isPreloadWorkerRunning = false;
-
-function preloadSlideImmediate(url) {
-    if (!url || slideImageCache.has(url)) return;
-    const img = new Image();
-    img.onload = img.onerror = () => {
-        slideImageCache.set(url, img);
-    };
-    img.src = url;
-    slideImageCache.set(url, img);
-}
-
-function processPreloadQueue() {
-    if (isPreloadWorkerRunning || preloadQueue.length === 0) return;
-    isPreloadWorkerRunning = true;
-    const nextUrl = preloadQueue.shift();
-    if (!nextUrl || (slideImageCache.has(nextUrl) && slideImageCache.get(nextUrl).complete)) {
-        isPreloadWorkerRunning = false;
-        processPreloadQueue();
-        return;
-    }
-    const img = new Image();
-    img.onload = img.onerror = () => {
-        slideImageCache.set(nextUrl, img);
-        isPreloadWorkerRunning = false;
-        // Nghỉ 100ms giữa mỗi ảnh ngầm để giải phóng hoàn toàn băng thông và CPU
-        setTimeout(processPreloadQueue, 100);
-    };
-    img.src = nextUrl;
-}
-
-function preloadSlidesAround(pageNum, doc) {
+// ----------------- PRELOAD SLIDES (Tiền tải nhẹ nhàng trang tiếp theo) -----------------
+function preloadNextSlide(pageNum, doc) {
     if (!doc || !doc.pages || doc.mode !== 'image') return;
-    const total = doc.pages.length;
-
-    // 1. Tải ngay lập tức trang tiếp theo và trang trước đó
-    const nextIdx = pageNum;
+    const total = doc.total_pages || doc.pages.length;
+    const nextIdx = pageNum; // 0-indexed for pageNum + 1
     if (nextIdx < total && doc.pages[nextIdx] && doc.pages[nextIdx].image_url) {
-        preloadSlideImmediate(doc.pages[nextIdx].image_url);
+        const pre = new Image();
+        pre.src = doc.pages[nextIdx].image_url;
     }
-    const prevIdx = pageNum - 2;
-    if (prevIdx >= 0 && doc.pages[prevIdx] && doc.pages[prevIdx].image_url) {
-        preloadSlideImmediate(doc.pages[prevIdx].image_url);
-    }
-
-    // 2. Đưa các trang lân cận còn lại vào hàng đợi tuần tự (1 ảnh/lần)
-    const upcoming = [];
-    for (let i = 2; i <= 6; i++) {
-        const idx = pageNum - 1 + i;
-        if (idx < total && doc.pages[idx] && doc.pages[idx].image_url) {
-            const u = doc.pages[idx].image_url;
-            if (!slideImageCache.has(u)) upcoming.push(u);
-        }
-    }
-    preloadQueue = [...upcoming, ...preloadQueue.filter(u => !upcoming.includes(u))];
-    processPreloadQueue();
 }
 
-// ----------------- SLIDE NAVIGATION & RENDERING -----------------
+// ----------------- SLIDE NAVIGATION & RENDERING (Chuyển trang tức thì 0ms) -----------------
 
 function renderPage(pageNum) {
+    pageNum = parseInt(pageNum, 10) || 1;
     currentSession.current_page = pageNum;
     const doc = currentSession.doc_data;
     
@@ -304,61 +296,46 @@ function renderPage(pageNum) {
         return;
     }
 
-    const total = doc.total_pages;
+    const total = doc.total_pages || doc.pages.length;
     const tot = document.getElementById('total-page-text');
     if (tot) tot.textContent = total;
     document.getElementById('whiteboard-notice').classList.add('hidden');
 
     const pageData = doc.pages[pageNum - 1];
+    if (!pageData) return;
 
     if (doc.mode === 'image') {
         const img = document.getElementById('slide-img');
         const targetUrl = pageData.image_url;
 
-        // Nếu ảnh đã sẵn sàng trong cache, hoán đổi tức thì trong 0ms không chớp nháy
-        const cachedImg = slideImageCache.get(targetUrl);
-        if (cachedImg && cachedImg.complete && cachedImg.naturalWidth > 0) {
+        // Chuyển trang tức thì: gán src trực tiếp, trình duyệt sẽ tự lấy từ cache RAM/disk hoặc tải về ngay
+        if (img.getAttribute('data-active-url') !== targetUrl) {
+            img.setAttribute('data-active-url', targetUrl);
             img.src = targetUrl;
             img.classList.remove('hidden');
             document.getElementById('slide-card').classList.add('hidden');
-            applyZoomAndFit();
-            setupCanvasResolution();
-        } else {
-            // Giữ slide hiện tại, tải ngầm ảnh mới rồi mới đổi mượt mà
-            const preImg = cachedImg || new Image();
-            if (!slideImageCache.has(targetUrl)) {
-                slideImageCache.set(targetUrl, preImg);
-                preImg.src = targetUrl;
-            }
-            preImg.onload = () => {
-                if (currentSession.current_page === pageNum) {
-                    img.src = targetUrl;
-                    img.classList.remove('hidden');
-                    document.getElementById('slide-card').classList.add('hidden');
-                    applyZoomAndFit();
-                    setupCanvasResolution();
+
+            // Dự phòng: Nếu server Render đang bận sinh trang on-demand, tự động thử lại sau 500ms
+            let retries = 0;
+            img.onerror = () => {
+                if (retries < 3 && currentSession.current_page === pageNum) {
+                    retries++;
+                    setTimeout(() => {
+                        if (currentSession.current_page === pageNum) {
+                            img.src = `${targetUrl}?r=${Date.now()}`;
+                        }
+                    }, 500);
                 }
             };
-            if (preImg.complete && preImg.naturalWidth > 0) {
-                img.src = targetUrl;
-                img.classList.remove('hidden');
-                document.getElementById('slide-card').classList.add('hidden');
-                applyZoomAndFit();
-                setupCanvasResolution();
-            } else {
-                img.src = targetUrl;
-                img.classList.remove('hidden');
-                document.getElementById('slide-card').classList.add('hidden');
-                img.onload = () => {
-                    applyZoomAndFit();
-                    setupCanvasResolution();
-                };
-            }
+        } else {
+            img.classList.remove('hidden');
+            document.getElementById('slide-card').classList.add('hidden');
         }
 
         applyZoomAndFit();
-        // Tiền tải tuần tự các trang tiếp theo
-        preloadSlidesAround(pageNum, doc);
+        setupCanvasResolution();
+        // Tiền tải ngầm trang kế tiếp để lần bấm sau hiển thị tức thì
+        preloadNextSlide(pageNum, doc);
     } else {
         document.getElementById('slide-img').classList.add('hidden');
         const card = document.getElementById('slide-card');
@@ -414,14 +391,19 @@ function nextPage() {
 }
 
 function goToPage(page) {
-    renderPage(page);
+    page = parseInt(page, 10) || 1;
+    currentSession.drawings = [];
     clearCanvas();
+    renderPage(page);
     const scrollCont = document.getElementById('stage-scroll-container');
     if (scrollCont) scrollCont.scrollTop = 0;
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
             type: 'PAGE_CHANGE',
             page: page
+        }));
+        ws.send(JSON.stringify({
+            type: 'CLEAR_DRAWINGS'
         }));
         ws.send(JSON.stringify({
             type: 'SCROLL_SYNC',

@@ -309,6 +309,14 @@ function connectWebSocket() {
             sessionState.student_mic_allowed = !!msg.allowed;
             updateStudentMicLockUI(msg.allowed);
         }
+
+        // 20. Cập nhật số lượng học sinh đang cùng xem bài giảng
+        else if (msg.type === 'STUDENT_COUNT') {
+            const cntEl = document.getElementById('student-count-val');
+            if (cntEl) cntEl.textContent = msg.count;
+            const fullEl = document.getElementById('student-counter');
+            if (fullEl) fullEl.classList.remove('hidden');
+        }
     };
 
     ws.onclose = () => {
@@ -522,68 +530,18 @@ function handleOrientationOrResize() {
 window.addEventListener('orientationchange', handleOrientationOrResize);
 window.addEventListener('resize', handleOrientationOrResize);
 
-// ----------------- CACHE & TUẦN TỰ PRELOAD SLIDES (0ms Chuyển Trang) -----------------
-const slideImageCache = new Map();
-let preloadQueue = [];
-let isPreloadWorkerRunning = false;
-
-function preloadSlideImmediate(url) {
-    if (!url || slideImageCache.has(url)) return;
-    const img = new Image();
-    img.onload = img.onerror = () => {
-        slideImageCache.set(url, img);
-    };
-    img.src = url;
-    slideImageCache.set(url, img);
-}
-
-function processPreloadQueue() {
-    if (isPreloadWorkerRunning || preloadQueue.length === 0) return;
-    isPreloadWorkerRunning = true;
-    const nextUrl = preloadQueue.shift();
-    if (!nextUrl || (slideImageCache.has(nextUrl) && slideImageCache.get(nextUrl).complete)) {
-        isPreloadWorkerRunning = false;
-        processPreloadQueue();
-        return;
-    }
-    const img = new Image();
-    img.onload = img.onerror = () => {
-        slideImageCache.set(nextUrl, img);
-        isPreloadWorkerRunning = false;
-        // Nghỉ 100ms giữa mỗi ảnh ngầm để không chiếm dụng băng thông
-        setTimeout(processPreloadQueue, 100);
-    };
-    img.src = nextUrl;
-}
-
-function preloadSlidesAround(pageNum, doc) {
+// ----------------- PRELOAD SLIDES (Tiền tải nhẹ nhàng trang tiếp theo) -----------------
+function preloadNextSlide(pageNum, doc) {
     if (!doc || !doc.pages || doc.mode !== 'image') return;
-    const total = doc.pages.length;
-
-    // 1. Tải ngay lập tức trang tiếp theo và trang trước đó
+    const total = doc.total_pages || doc.pages.length;
     const nextIdx = pageNum;
     if (nextIdx < total && doc.pages[nextIdx] && doc.pages[nextIdx].image_url) {
-        preloadSlideImmediate(doc.pages[nextIdx].image_url);
+        const pre = new Image();
+        pre.src = doc.pages[nextIdx].image_url;
     }
-    const prevIdx = pageNum - 2;
-    if (prevIdx >= 0 && doc.pages[prevIdx] && doc.pages[prevIdx].image_url) {
-        preloadSlideImmediate(doc.pages[prevIdx].image_url);
-    }
-
-    // 2. Đưa các trang lân cận còn lại vào hàng đợi tuần tự (1 ảnh/lần)
-    const upcoming = [];
-    for (let i = 2; i <= 6; i++) {
-        const idx = pageNum - 1 + i;
-        if (idx < total && doc.pages[idx] && doc.pages[idx].image_url) {
-            const u = doc.pages[idx].image_url;
-            if (!slideImageCache.has(u)) upcoming.push(u);
-        }
-    }
-    preloadQueue = [...upcoming, ...preloadQueue.filter(u => !upcoming.includes(u))];
-    processPreloadQueue();
 }
 
-// ----------------- RENDER SLIDE -----------------
+// ----------------- RENDER SLIDE (Chuyển slide tức thì 0ms) -----------------
 
 function renderPage(pageNum) {
     const doc = sessionState.doc_data;
@@ -613,50 +571,34 @@ function renderPage(pageNum) {
         const img = document.getElementById('slide-img');
         const targetUrl = pageData.image_url;
 
-        // Nếu ảnh đã sẵn sàng trong cache, hoán đổi tức thì trong 0ms không chớp nháy
-        const cachedImg = slideImageCache.get(targetUrl);
-        if (cachedImg && cachedImg.complete && cachedImg.naturalWidth > 0) {
+        // Chuyển trang tức thì: gán src trực tiếp, trình duyệt tự động cache hoặc fetch
+        if (img.getAttribute('data-active-url') !== targetUrl) {
+            img.setAttribute('data-active-url', targetUrl);
             img.src = targetUrl;
             img.classList.remove('hidden');
             document.getElementById('slide-card').classList.add('hidden');
-            applyZoomAndFit();
-            setupCanvasResolution();
-        } else {
-            // Nếu chưa xong, tiếp tục giữ ảnh cũ hoặc gắn onload mượt mà
-            const preImg = cachedImg || new Image();
-            if (!slideImageCache.has(targetUrl)) {
-                slideImageCache.set(targetUrl, preImg);
-                preImg.src = targetUrl;
-            }
-            preImg.onload = () => {
-                if (sessionState.current_page === pageNum) {
-                    img.src = targetUrl;
-                    img.classList.remove('hidden');
-                    document.getElementById('slide-card').classList.add('hidden');
-                    applyZoomAndFit();
-                    setupCanvasResolution();
+
+            // Dự phòng tự thử lại nếu ảnh on-demand đang được tạo
+            let retries = 0;
+            img.onerror = () => {
+                if (retries < 3 && sessionState.current_page === pageNum) {
+                    retries++;
+                    setTimeout(() => {
+                        if (sessionState.current_page === pageNum) {
+                            img.src = `${targetUrl}?r=${Date.now()}`;
+                        }
+                    }, 500);
                 }
             };
-            if (preImg.complete && preImg.naturalWidth > 0) {
-                img.src = targetUrl;
-                img.classList.remove('hidden');
-                document.getElementById('slide-card').classList.add('hidden');
-                applyZoomAndFit();
-                setupCanvasResolution();
-            } else {
-                img.src = targetUrl;
-                img.classList.remove('hidden');
-                document.getElementById('slide-card').classList.add('hidden');
-                img.onload = () => {
-                    applyZoomAndFit();
-                    setupCanvasResolution();
-                };
-            }
+        } else {
+            img.classList.remove('hidden');
+            document.getElementById('slide-card').classList.add('hidden');
         }
 
         applyZoomAndFit();
-        // Tiền tải ngầm các trang tiếp theo và toàn bộ bài giảng
-        preloadSlidesAround(pageNum, doc);
+        setupCanvasResolution();
+        // Tiền tải ngầm trang kế tiếp
+        preloadNextSlide(pageNum, doc);
     } else {
         document.getElementById('slide-img').classList.add('hidden');
         const card = document.getElementById('slide-card');

@@ -299,9 +299,26 @@ def process_uploaded_document(file_path: str, cache_dir: str) -> dict:
         except Exception:
             raise ValueError(f"Định dạng {ext} chưa được hỗ trợ.")
 
+def _ensure_all_pages_rendered(output_dir: str, file_path: str, manifest: dict):
+    if not manifest or manifest.get("mode") != "image":
+        return
+    total = manifest.get("total_pages", 0)
+    if total <= 2:
+        return
+    last_page = os.path.join(output_dir, f"page_{total}.png")
+    if not os.path.exists(last_page) or os.path.getsize(last_page) == 0:
+        target_pdf = os.path.join(output_dir, "exported_slides.pdf")
+        if not os.path.exists(target_pdf):
+            target_pdf = file_path
+        if os.path.exists(target_pdf) and (target_pdf.endswith(".pdf") or os.path.exists(os.path.join(output_dir, "exported_slides.pdf"))):
+            actual_pdf = target_pdf if target_pdf.endswith(".pdf") else os.path.join(output_dir, "exported_slides.pdf")
+            if os.path.exists(actual_pdf):
+                _render_remaining_pages_background(actual_pdf, output_dir, total, 1.6)
+
 def _process_pdf(file_path: str, output_dir: str, doc_id: str) -> dict:
     manifest = _load_cached_manifest(output_dir)
     if manifest:
+        _ensure_all_pages_rendered(output_dir, file_path, manifest)
         return manifest
     return _render_pdf_to_images(file_path, output_dir, doc_id, "pdf")
 
@@ -309,6 +326,7 @@ def _process_pptx(file_path: str, output_dir: str, doc_id: str) -> dict:
     # 1. Cached manifest check
     manifest = _load_cached_manifest(output_dir)
     if manifest:
+        _ensure_all_pages_rendered(output_dir, file_path, manifest)
         return manifest
 
     # 2. High-fidelity Microsoft PowerPoint COM conversion (Windows)
