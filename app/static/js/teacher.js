@@ -37,7 +37,6 @@ function init() {
 
     // Render slide immediately
     renderPage(currentSession.current_page || 1);
-    buildSlideDrawer();
 
     if (currentSession && currentSession.drawings) {
         redrawAllStrokes(currentSession.drawings);
@@ -60,11 +59,15 @@ function init() {
 function setupCanvasResolution() {
     if (!stageWrapper || !canvas) return;
     const rect = stageWrapper.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-        canvas.width = Math.round(rect.width);
-        canvas.height = Math.round(rect.height);
-        if (currentSession && currentSession.drawings) {
-            redrawAllStrokes(currentSession.drawings);
+    const w = Math.round(rect.width);
+    const h = Math.round(rect.height);
+    if (w > 0 && h > 0) {
+        if (canvas.width !== w || canvas.height !== h) {
+            canvas.width = w;
+            canvas.height = h;
+            if (currentSession && currentSession.drawings) {
+                redrawAllStrokes(currentSession.drawings);
+            }
         }
     }
 }
@@ -86,7 +89,6 @@ function connectWebSocket() {
             if (msg.state && msg.state.doc_data) {
                 currentSession = msg.state;
                 renderPage(currentSession.current_page || 1);
-                buildSlideDrawer();
             }
             if (msg.state && msg.state.chat_messages) {
                 loadInitialChatMessages(msg.state.chat_messages);
@@ -166,7 +168,7 @@ function applyZoomAndFit() {
         }
         if (stage) {
             const widthClass = zoomLevel >= 2.0 ? 'max-w-7xl' : (zoomLevel >= 1.5 ? 'max-w-6xl' : (zoomLevel >= 1.25 ? 'max-w-5xl' : 'max-w-4xl'));
-            stage.className = `relative w-full ${widthClass} bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-start border border-slate-800 transition-all duration-150 my-2`;
+            stage.className = `relative w-full ${widthClass} bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-start border border-slate-800 my-2`;
         }
         if (img) {
             img.style.width = '100%';
@@ -180,7 +182,7 @@ function applyZoomAndFit() {
             btnFit.className = "px-2.5 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-slate-300 hover:text-white transition flex items-center space-x-1";
         }
         if (stage) {
-            stage.className = `relative max-h-[calc(100vh-160px)] w-fit max-w-[95vw] bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-center border border-slate-800 transition-all duration-150 my-auto`;
+            stage.className = `relative max-h-[calc(100vh-160px)] w-fit max-w-[95vw] bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col items-center justify-center border border-slate-800 my-auto`;
         }
         if (img) {
             img.style.width = 'auto';
@@ -222,41 +224,65 @@ function handleScroll(e) {
     }
 }
 
-// ----------------- CACHE & PRELOAD SLIDES (0ms Chuyển Trang) -----------------
+// ----------------- CACHE & TUẦN TỰ PRELOAD SLIDES (0ms Chuyển Trang) -----------------
 const slideImageCache = new Map();
+let preloadQueue = [];
+let isPreloadWorkerRunning = false;
 
-function preloadSlideImage(url) {
+function preloadSlideImmediate(url) {
     if (!url || slideImageCache.has(url)) return;
     const img = new Image();
+    img.onload = img.onerror = () => {
+        slideImageCache.set(url, img);
+    };
     img.src = url;
     slideImageCache.set(url, img);
+}
+
+function processPreloadQueue() {
+    if (isPreloadWorkerRunning || preloadQueue.length === 0) return;
+    isPreloadWorkerRunning = true;
+    const nextUrl = preloadQueue.shift();
+    if (!nextUrl || (slideImageCache.has(nextUrl) && slideImageCache.get(nextUrl).complete)) {
+        isPreloadWorkerRunning = false;
+        processPreloadQueue();
+        return;
+    }
+    const img = new Image();
+    img.onload = img.onerror = () => {
+        slideImageCache.set(nextUrl, img);
+        isPreloadWorkerRunning = false;
+        // Nghỉ 100ms giữa mỗi ảnh ngầm để giải phóng hoàn toàn băng thông và CPU
+        setTimeout(processPreloadQueue, 100);
+    };
+    img.src = nextUrl;
 }
 
 function preloadSlidesAround(pageNum, doc) {
     if (!doc || !doc.pages || doc.mode !== 'image') return;
     const total = doc.pages.length;
-    // 1. Ưu tiên cao nhất: 3 trang tiếp theo
-    for (let i = 1; i <= 3; i++) {
+
+    // 1. Tải ngay lập tức trang tiếp theo và trang trước đó
+    const nextIdx = pageNum;
+    if (nextIdx < total && doc.pages[nextIdx] && doc.pages[nextIdx].image_url) {
+        preloadSlideImmediate(doc.pages[nextIdx].image_url);
+    }
+    const prevIdx = pageNum - 2;
+    if (prevIdx >= 0 && doc.pages[prevIdx] && doc.pages[prevIdx].image_url) {
+        preloadSlideImmediate(doc.pages[prevIdx].image_url);
+    }
+
+    // 2. Đưa các trang lân cận còn lại vào hàng đợi tuần tự (1 ảnh/lần)
+    const upcoming = [];
+    for (let i = 2; i <= 6; i++) {
         const idx = pageNum - 1 + i;
         if (idx < total && doc.pages[idx] && doc.pages[idx].image_url) {
-            preloadSlideImage(doc.pages[idx].image_url);
+            const u = doc.pages[idx].image_url;
+            if (!slideImageCache.has(u)) upcoming.push(u);
         }
     }
-    // 2. Ưu tiên kế: 2 trang phía trước (đề phòng quay lại)
-    for (let i = 1; i <= 2; i++) {
-        const idx = pageNum - 1 - i;
-        if (idx >= 0 && doc.pages[idx] && doc.pages[idx].image_url) {
-            preloadSlideImage(doc.pages[idx].image_url);
-        }
-    }
-    // 3. Tải ngầm toàn bộ bài giảng trong nền để chuyển bất kỳ slide nào cũng 0ms
-    setTimeout(() => {
-        doc.pages.forEach(p => {
-            if (p && p.image_url) {
-                preloadSlideImage(p.image_url);
-            }
-        });
-    }, 300);
+    preloadQueue = [...upcoming, ...preloadQueue.filter(u => !upcoming.includes(u))];
+    processPreloadQueue();
 }
 
 // ----------------- SLIDE NAVIGATION & RENDERING -----------------
@@ -298,6 +324,7 @@ function renderPage(pageNum) {
             applyZoomAndFit();
             setupCanvasResolution();
         } else {
+            // Giữ slide hiện tại, tải ngầm ảnh mới rồi mới đổi mượt mà
             const preImg = cachedImg || new Image();
             if (!slideImageCache.has(targetUrl)) {
                 slideImageCache.set(targetUrl, preImg);
@@ -330,7 +357,7 @@ function renderPage(pageNum) {
         }
 
         applyZoomAndFit();
-        // Tiền tải ngầm các trang tiếp theo và toàn bộ bài giảng
+        // Tiền tải tuần tự các trang tiếp theo
         preloadSlidesAround(pageNum, doc);
     } else {
         document.getElementById('slide-img').classList.add('hidden');
@@ -356,7 +383,9 @@ function renderPage(pageNum) {
     }
 
     updateNavButtons(pageNum, total);
-    highlightActiveDrawerSlide(pageNum);
+    if (typeof isDrawerBuilt !== 'undefined' && isDrawerBuilt) {
+        highlightActiveDrawerSlide(pageNum);
+    }
 }
 
 function updateNavButtons(current, total) {
@@ -401,19 +430,25 @@ function goToPage(page) {
     }
 }
 
-// ----------------- SLIDE DRAWER / SIDEBAR -----------------
+// ----------------- SLIDE DRAWER / SIDEBAR (Tạo theo yêu cầu) -----------------
+let isDrawerBuilt = false;
 
 function toggleSlideDrawer() {
     const drawer = document.getElementById('slide-drawer');
+    if (!drawer) return;
     drawer.classList.toggle('hidden');
-    setTimeout(setupCanvasResolution, 300);
+    if (!drawer.classList.contains('hidden') && !isDrawerBuilt) {
+        buildSlideDrawer();
+        isDrawerBuilt = true;
+    }
+    setTimeout(setupCanvasResolution, 100);
 }
 
 function buildSlideDrawer() {
     const doc = currentSession.doc_data;
     const listCont = document.getElementById('drawer-slide-list');
     const countEl = document.getElementById('drawer-total-count');
-    if (!doc || !doc.pages) return;
+    if (!doc || !doc.pages || !listCont) return;
 
     if (countEl) countEl.textContent = doc.pages.length;
     listCont.innerHTML = '';
@@ -448,6 +483,8 @@ function buildSlideDrawer() {
         }
         listCont.appendChild(item);
     });
+
+    highlightActiveDrawerSlide(currentSession.current_page || 1);
 }
 
 function highlightActiveDrawerSlide(activeNum) {

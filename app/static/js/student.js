@@ -69,11 +69,15 @@ function init() {
 function setupCanvasResolution() {
     if (!stageWrapper || !canvas) return;
     const rect = stageWrapper.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-        canvas.width = Math.round(rect.width);
-        canvas.height = Math.round(rect.height);
-        if (sessionState && sessionState.drawings) {
-            redrawAllStrokes(sessionState.drawings);
+    const w = Math.round(rect.width);
+    const h = Math.round(rect.height);
+    if (w > 0 && h > 0) {
+        if (canvas.width !== w || canvas.height !== h) {
+            canvas.width = w;
+            canvas.height = h;
+            if (sessionState && sessionState.drawings) {
+                redrawAllStrokes(sessionState.drawings);
+            }
         }
     }
 }
@@ -385,7 +389,7 @@ function applyZoomAndFit(zoom = currentZoom, fitMode = currentFitMode) {
         if (currentFitMode === 'contain' || currentFitMode === 'page') {
             // Vừa toàn màn hình trong chế độ xoay ngang: không viền, không mép thừa, tràn sát cạnh
             if (stage) {
-                stage.className = `relative w-auto h-auto max-w-full max-h-full bg-white text-slate-900 rounded-none shadow-none overflow-hidden flex flex-col items-center justify-center border-0 transition-all duration-150 m-0 p-0`;
+                stage.className = `relative w-auto h-auto max-w-full max-h-full bg-white text-slate-900 rounded-none shadow-none overflow-hidden flex flex-col items-center justify-center border-0 m-0 p-0`;
             }
             if (img) {
                 const headerFooterOffset = document.fullscreenElement ? '0px' : '3.4rem';
@@ -398,7 +402,7 @@ function applyZoomAndFit(zoom = currentZoom, fitMode = currentFitMode) {
         } else {
             // Chế độ tràn bề ngang khi xoay ngang
             if (stage) {
-                stage.className = `relative w-full max-w-full bg-white text-slate-900 rounded-none shadow-none overflow-hidden flex flex-col items-center justify-start border-0 transition-all duration-150 m-0 p-0`;
+                stage.className = `relative w-full max-w-full bg-white text-slate-900 rounded-none shadow-none overflow-hidden flex flex-col items-center justify-start border-0 m-0 p-0`;
             }
             if (img) {
                 img.style.width = `${Math.round(100 * currentZoom)}%`;
@@ -418,7 +422,7 @@ function applyZoomAndFit(zoom = currentZoom, fitMode = currentFitMode) {
         if (currentFitMode === 'width') {
             if (stage) {
                 const widthClass = currentZoom >= 2.0 ? 'max-w-7xl' : (currentZoom >= 1.5 ? 'max-w-6xl' : (currentZoom >= 1.25 ? 'max-w-5xl' : 'max-w-4xl'));
-                stage.className = `relative w-full ${widthClass} bg-white text-slate-900 sm:rounded-2xl rounded-none shadow-2xl overflow-hidden flex flex-col items-center justify-start border-0 sm:border border-slate-800 transition-all duration-150 sm:my-2 my-0`;
+                stage.className = `relative w-full ${widthClass} bg-white text-slate-900 sm:rounded-2xl rounded-none shadow-2xl overflow-hidden flex flex-col items-center justify-start border-0 sm:border border-slate-800 sm:my-2 my-0`;
             }
             if (img) {
                 img.style.width = '100%';
@@ -429,7 +433,7 @@ function applyZoomAndFit(zoom = currentZoom, fitMode = currentFitMode) {
             }
         } else {
             if (stage) {
-                stage.className = `relative max-h-[calc(100dvh-5rem)] w-auto max-w-full bg-white text-slate-900 sm:rounded-2xl rounded-none shadow-2xl overflow-hidden flex flex-col items-center justify-center border-0 sm:border border-slate-800 transition-all duration-150 my-auto`;
+                stage.className = `relative max-h-[calc(100dvh-5rem)] w-auto max-w-full bg-white text-slate-900 sm:rounded-2xl rounded-none shadow-2xl overflow-hidden flex flex-col items-center justify-center border-0 sm:border border-slate-800 my-auto`;
             }
             if (img) {
                 img.style.width = 'auto';
@@ -518,41 +522,65 @@ function handleOrientationOrResize() {
 window.addEventListener('orientationchange', handleOrientationOrResize);
 window.addEventListener('resize', handleOrientationOrResize);
 
-// ----------------- CACHE & PRELOAD SLIDES (0ms Chuyển Trang) -----------------
+// ----------------- CACHE & TUẦN TỰ PRELOAD SLIDES (0ms Chuyển Trang) -----------------
 const slideImageCache = new Map();
+let preloadQueue = [];
+let isPreloadWorkerRunning = false;
 
-function preloadSlideImage(url) {
+function preloadSlideImmediate(url) {
     if (!url || slideImageCache.has(url)) return;
     const img = new Image();
+    img.onload = img.onerror = () => {
+        slideImageCache.set(url, img);
+    };
     img.src = url;
     slideImageCache.set(url, img);
+}
+
+function processPreloadQueue() {
+    if (isPreloadWorkerRunning || preloadQueue.length === 0) return;
+    isPreloadWorkerRunning = true;
+    const nextUrl = preloadQueue.shift();
+    if (!nextUrl || (slideImageCache.has(nextUrl) && slideImageCache.get(nextUrl).complete)) {
+        isPreloadWorkerRunning = false;
+        processPreloadQueue();
+        return;
+    }
+    const img = new Image();
+    img.onload = img.onerror = () => {
+        slideImageCache.set(nextUrl, img);
+        isPreloadWorkerRunning = false;
+        // Nghỉ 100ms giữa mỗi ảnh ngầm để không chiếm dụng băng thông
+        setTimeout(processPreloadQueue, 100);
+    };
+    img.src = nextUrl;
 }
 
 function preloadSlidesAround(pageNum, doc) {
     if (!doc || !doc.pages || doc.mode !== 'image') return;
     const total = doc.pages.length;
-    // 1. Ưu tiên cao nhất: 3 trang tiếp theo
-    for (let i = 1; i <= 3; i++) {
+
+    // 1. Tải ngay lập tức trang tiếp theo và trang trước đó
+    const nextIdx = pageNum;
+    if (nextIdx < total && doc.pages[nextIdx] && doc.pages[nextIdx].image_url) {
+        preloadSlideImmediate(doc.pages[nextIdx].image_url);
+    }
+    const prevIdx = pageNum - 2;
+    if (prevIdx >= 0 && doc.pages[prevIdx] && doc.pages[prevIdx].image_url) {
+        preloadSlideImmediate(doc.pages[prevIdx].image_url);
+    }
+
+    // 2. Đưa các trang lân cận còn lại vào hàng đợi tuần tự (1 ảnh/lần)
+    const upcoming = [];
+    for (let i = 2; i <= 6; i++) {
         const idx = pageNum - 1 + i;
         if (idx < total && doc.pages[idx] && doc.pages[idx].image_url) {
-            preloadSlideImage(doc.pages[idx].image_url);
+            const u = doc.pages[idx].image_url;
+            if (!slideImageCache.has(u)) upcoming.push(u);
         }
     }
-    // 2. Ưu tiên kế: 2 trang phía trước (đề phòng quay lại)
-    for (let i = 1; i <= 2; i++) {
-        const idx = pageNum - 1 - i;
-        if (idx >= 0 && doc.pages[idx] && doc.pages[idx].image_url) {
-            preloadSlideImage(doc.pages[idx].image_url);
-        }
-    }
-    // 3. Tải ngầm toàn bộ bài giảng trong nền để chuyển bất kỳ slide nào cũng 0ms
-    setTimeout(() => {
-        doc.pages.forEach(p => {
-            if (p && p.image_url) {
-                preloadSlideImage(p.image_url);
-            }
-        });
-    }, 300);
+    preloadQueue = [...upcoming, ...preloadQueue.filter(u => !upcoming.includes(u))];
+    processPreloadQueue();
 }
 
 // ----------------- RENDER SLIDE -----------------
