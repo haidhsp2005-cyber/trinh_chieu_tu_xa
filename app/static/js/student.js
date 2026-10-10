@@ -992,6 +992,18 @@ function handleIncomingStudentChatMessage(msg) {
     }
 }
 
+function formatStudentMsgTime(msg) {
+    if (msg.timestamp) {
+        try {
+            const d = new Date(msg.timestamp);
+            const h = String(d.getHours()).padStart(2, '0');
+            const m = String(d.getMinutes()).padStart(2, '0');
+            return `${h}:${m}`;
+        } catch (e) {}
+    }
+    return msg.time || '';
+}
+
 function renderStudentChatMessageItem(msg) {
     const cont = document.getElementById('student-chat-messages');
     if (!cont) return;
@@ -1003,7 +1015,7 @@ function renderStudentChatMessageItem(msg) {
     div.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-0.5 text-xs`;
 
     const senderDisplay = escapeHtml(msg.sender || (isTeacher ? 'Thầy/Cô' : 'Học sinh'));
-    const timeDisplay = escapeHtml(msg.time || '');
+    const timeDisplay = escapeHtml(formatStudentMsgTime(msg));
     const textDisplay = escapeHtml(msg.text || '');
 
     if (isTeacher) {

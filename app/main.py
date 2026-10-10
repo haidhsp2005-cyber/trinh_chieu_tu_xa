@@ -4,8 +4,10 @@ import socket
 import json
 import uuid
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any
+
+VN_TZ = timezone(timedelta(hours=7))
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -603,13 +605,15 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
                 text = str(data.get("text", "")).strip()
                 if text:
                     sender = str(data.get("sender", "Thầy/Cô" if role == "teacher" else "Học sinh")).strip()
-                    time_str = datetime.now().strftime("%H:%M")
+                    now_vn = datetime.now(VN_TZ)
+                    time_str = now_vn.strftime("%H:%M")
                     msg_obj = {
                         "id": str(uuid.uuid4())[:8],
                         "sender": sender,
                         "role": role,
                         "text": text,
-                        "time": time_str
+                        "time": time_str,
+                        "timestamp": int(now_vn.timestamp() * 1000)
                     }
                     session.chat_messages.append(msg_obj)
                     if len(session.chat_messages) > 100:

@@ -1268,6 +1268,18 @@ function handleIncomingChatMessage(msg) {
     }
 }
 
+function formatMsgTime(msg) {
+    if (msg.timestamp) {
+        try {
+            const d = new Date(msg.timestamp);
+            const h = String(d.getHours()).padStart(2, '0');
+            const m = String(d.getMinutes()).padStart(2, '0');
+            return `${h}:${m}`;
+        } catch (e) {}
+    }
+    return msg.time || '';
+}
+
 function renderChatMessageItem(msg, shouldScroll = true) {
     const container = document.getElementById('teacher-chat-messages');
     if (!container) return;
@@ -1283,9 +1295,11 @@ function renderChatMessageItem(msg, shouldScroll = true) {
         ? `<span class="text-[9px] px-1.5 py-0.2 bg-blue-500/20 text-blue-300 font-extrabold rounded border border-blue-500/30">Thầy/Cô</span>`
         : `<span class="text-[9px] px-1.5 py-0.2 bg-emerald-500/20 text-emerald-300 font-bold rounded border border-emerald-500/30">Học sinh</span>`;
 
+    const displayTime = formatMsgTime(msg);
+
     item.innerHTML = `
         <div class="flex items-center space-x-1.5 text-[11px] text-slate-400">
-            ${isTeacher ? `<span>${msg.time || ''}</span> ${roleBadge} <span class="font-bold text-slate-200">${escapeHtml(msg.sender)}</span>` : `<span class="font-bold text-cyan-300">${escapeHtml(msg.sender)}</span> ${roleBadge} <span>${msg.time || ''}</span>`}
+            ${isTeacher ? `<span>${displayTime}</span> ${roleBadge} <span class="font-bold text-slate-200">${escapeHtml(msg.sender)}</span>` : `<span class="font-bold text-cyan-300">${escapeHtml(msg.sender)}</span> ${roleBadge} <span>${displayTime}</span>`}
         </div>
         <div class="max-w-[85%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed shadow-sm ${isTeacher ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-100 border border-slate-700/80 rounded-tl-none'}">
             ${escapeHtml(msg.text)}
