@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime
 from typing import Dict, List, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -22,6 +22,20 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 app = FastAPI(title="Smart Classroom - Realtime Presentation")
+
+# ----------------- HEALTH & KEEP-ALIVE PING (CHO CRON-JOB.ORG) -----------------
+@app.get("/ping", response_class=PlainTextResponse)
+@app.head("/ping")
+@app.get("/health", response_class=PlainTextResponse)
+@app.head("/health")
+@app.get("/api/health")
+async def health_ping():
+    """Endpoint siêu nhẹ (chỉ 2 bytes 'OK') dành riêng cho cron-job.org / UptimeRobot giữ Render luôn thức."""
+    return "OK"
+
+@app.head("/")
+async def root_head():
+    return Response(status_code=200)
 
 @app.get("/cache/{doc_id}/{filename}")
 async def serve_cached_slide(doc_id: str, filename: str):
