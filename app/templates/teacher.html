@@ -134,16 +134,6 @@
 
         <!-- Student Count Indicator & Actions (Mobile responsive with smooth scroll) -->
         <div class="flex items-center space-x-1.5 sm:space-x-2.5 overflow-x-auto no-scrollbar py-1 shrink-0 max-w-[calc(100vw-110px)] sm:max-w-none">
-            <!-- Đổi bài giảng nhanh dropdown -->
-            <div class="relative hidden md:block shrink-0">
-                <select id="select-change-material" onchange="changeMaterial(this.value)" class="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                    {% for m in all_materials %}
-                    <option value="{{ m.id }}" {% if m.id == session.material_id %}selected{% endif %}>
-                        📖 {{ m.title[:25] }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
 
             <!-- Live Students Count Badge -->
             <div class="flex items-center space-x-1.5 bg-slate-950 border border-slate-800 px-2.5 py-1 sm:py-1.5 rounded-full text-[11px] sm:text-xs text-slate-300 font-semibold shrink-0">
