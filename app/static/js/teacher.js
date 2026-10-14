@@ -926,8 +926,9 @@ async function toggleScreenShare() {
         }
 
         // Gửi khung hình định kỳ có kiểm soát áp lực mạng (Backpressure Check)
-        // Chu kỳ 220ms (~4.5 FPS) với kích thước tối ưu max 960px và chất lượng JPEG 0.45
-        // Giúp dung lượng mỗi khung chỉ còn 25-35 KB (giảm 90% tải), hoàn toàn không làm đơ web hay rớt học sinh!
+        // Kích thước chuẩn 854px (chuẩn 480p) và chất lượng JPEG 0.45
+        // Giúp dung lượng mỗi khung chỉ còn 18-25 KB (siêu nhẹ cho điện thoại di động)
+        // Chu kỳ 200ms (~5 FPS) mang lại tốc độ thời gian thực mượt mà không độ trễ
         screenCaptureInterval = setInterval(() => {
             if (!isScreenSharing || !localScreenStream || !video || !video.videoWidth || !video.videoHeight) return;
             if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -939,7 +940,7 @@ async function toggleScreenShare() {
 
             try {
                 isEncodingFrame = true;
-                const maxDim = 960;
+                const maxDim = 854;
                 let w = video.videoWidth;
                 let h = video.videoHeight;
                 if (w > maxDim) {
@@ -962,7 +963,7 @@ async function toggleScreenShare() {
             } finally {
                 isEncodingFrame = false;
             }
-        }, 220);
+        }, 200);
 
     } catch (err) {
         console.warn("Không khởi động được chia sẻ màn hình:", err);

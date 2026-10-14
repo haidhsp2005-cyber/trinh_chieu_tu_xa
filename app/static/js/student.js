@@ -239,14 +239,41 @@ function connectWebSocket() {
             }
         }
 
-        // 9. Nhận khung hình chia sẻ màn hình trực tiếp từ Giáo viên
+// ----------------- ZERO-LAG SCREEN SHARE FRAME PROCESSOR -----------------
+let pendingScreenFrame = null;
+let isScreenImgBusy = false;
+
+function processNextScreenFrame() {
+    if (!pendingScreenFrame || isScreenImgBusy) return;
+    const screenImg = document.getElementById('screen-frame-img');
+    if (!screenImg) return;
+
+    isScreenImgBusy = true;
+    const frameToRender = pendingScreenFrame;
+    pendingScreenFrame = null; // Luôn giải phóng và chỉ giữ frame mới nhất
+
+    screenImg.onload = () => {
+        isScreenImgBusy = false;
+        if (pendingScreenFrame) {
+            requestAnimationFrame(processNextScreenFrame);
+        }
+    };
+    screenImg.onerror = () => {
+        isScreenImgBusy = false;
+        if (pendingScreenFrame) {
+            requestAnimationFrame(processNextScreenFrame);
+        }
+    };
+    screenImg.src = frameToRender;
+}
+
+        // 9. Nhận khung hình chia sẻ màn hình trực tiếp từ Giáo viên (Realtime 0-Lag)
         else if (msg.type === 'SCREEN_FRAME') {
             const screenCont = document.getElementById('screen-share-container');
             const slideCont = document.getElementById('slide-container');
-            const screenImg = document.getElementById('screen-frame-img');
             const loading = document.getElementById('screen-share-loading');
 
-            if (screenCont && slideCont && screenImg) {
+            if (screenCont && slideCont) {
                 if (screenCont.classList.contains('hidden')) {
                     screenCont.classList.remove('hidden');
                     slideCont.classList.add('hidden');
@@ -255,7 +282,9 @@ function connectWebSocket() {
                     loading.classList.add('hidden');
                 }
                 if (msg.frame) {
-                    screenImg.src = msg.frame;
+                    // Cơ chế Realtime Drop-lag: Cập nhật frame mới nhất, bỏ qua frame cũ để điện thoại không bị trễ
+                    pendingScreenFrame = msg.frame;
+                    processNextScreenFrame();
                 }
             }
         }
@@ -693,6 +722,8 @@ function switchDisplayMode(mode) {
         if (screenCont) screenCont.classList.add('hidden');
         if (slideCont) slideCont.classList.remove('hidden');
         if (loading) loading.classList.add('hidden');
+        pendingScreenFrame = null;
+        isScreenImgBusy = false;
         if (screenImg) screenImg.src = ''; // Giải phóng bộ nhớ ảnh màn hình lập tức
         renderPage(sessionState.current_page || 1, 'next', 'none');
     }
