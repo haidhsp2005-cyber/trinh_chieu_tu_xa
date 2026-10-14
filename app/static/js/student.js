@@ -37,7 +37,7 @@ function init() {
             }
             document.getElementById('room-title-text').textContent = sessionState.title || "Lớp học trực tuyến";
             document.title = sessionState.title || "Lớp học trực tuyến";
-            renderPage(sessionState.current_page || 1);
+            renderPage(sessionState.current_page || 1, 'next', 'none');
             if (sessionState.drawings) {
                 redrawAllStrokes(sessionState.drawings);
             }
@@ -133,7 +133,7 @@ function connectWebSocket() {
             document.getElementById('room-title-text').textContent = sessionState.title || "Lớp học trực tuyến";
             document.title = sessionState.title || "Lớp học trực tuyến";
             
-            renderPage(sessionState.current_page || 1);
+            renderPage(sessionState.current_page || 1, 'next', 'none');
             if (sessionState.drawings) {
                 redrawAllStrokes(sessionState.drawings);
             }
@@ -170,9 +170,25 @@ function connectWebSocket() {
         else if (msg.type === 'PAGE_CHANGE') {
             sessionState.current_page = msg.page;
             sessionState.drawings = [];
+            currentRevealStep = 0;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             laserDot.classList.add('hidden');
-            renderPage(msg.page);
+            renderPage(msg.page, msg.direction || 'next', msg.transition || 'slide');
+        }
+
+        // 2.1. Teacher Revealed Step / Bullet in Slide
+        else if (msg.type === 'REVEAL_STEP') {
+            currentRevealStep = msg.step;
+            const items = document.querySelectorAll('#card-bullets .reveal-item');
+            items.forEach((item, idx) => {
+                if (idx < msg.step) {
+                    item.classList.remove('reveal-hidden');
+                    item.classList.add('reveal-visible');
+                } else {
+                    item.classList.remove('reveal-visible');
+                    item.classList.add('reveal-hidden');
+                }
+            });
         }
 
         // 3. Teacher Moved Laser Pointer
@@ -541,9 +557,39 @@ function preloadNextSlide(pageNum, doc) {
     }
 }
 
-// ----------------- RENDER SLIDE (Chuyển slide tức thì 0ms) -----------------
+// ----------------- RENDER SLIDE (Chuyển slide tức thì & hiệu ứng mượt mà) -----------------
+let currentRevealStep = 0;
 
-function renderPage(pageNum) {
+function applySlideTransition(el, direction = 'next', transition = 'slide') {
+    if (!el || transition === 'none') return;
+    el.classList.remove(
+        'slide-transition-slide-next',
+        'slide-transition-slide-prev',
+        'slide-transition-fade',
+        'slide-transition-zoom',
+        'slide-transition-flip'
+    );
+    void el.offsetWidth; // Force DOM reflow to restart CSS animation smoothly
+    let animClass = '';
+    if (transition === 'slide') {
+        animClass = (direction === 'prev') ? 'slide-transition-slide-prev' : 'slide-transition-slide-next';
+    } else if (transition === 'fade') {
+        animClass = 'slide-transition-fade';
+    } else if (transition === 'zoom') {
+        animClass = 'slide-transition-zoom';
+    } else if (transition === 'flip') {
+        animClass = 'slide-transition-flip';
+    }
+
+    if (animClass) {
+        el.classList.add(animClass);
+        setTimeout(() => {
+            el.classList.remove(animClass);
+        }, 400);
+    }
+}
+
+function renderPage(pageNum, direction = 'next', transition = 'slide') {
     const doc = sessionState.doc_data;
 
     if (!doc || !doc.pages || doc.pages.length === 0) {
@@ -578,6 +624,9 @@ function renderPage(pageNum) {
             img.classList.remove('hidden');
             document.getElementById('slide-card').classList.add('hidden');
 
+            // Áp dụng hiệu ứng chuyển động mượt mà
+            applySlideTransition(img, direction, transition);
+
             // Dự phòng tự thử lại nếu ảnh on-demand đang được tạo
             let retries = 0;
             img.onerror = () => {
@@ -610,12 +659,16 @@ function renderPage(pageNum) {
         const bulletsList = document.getElementById('card-bullets');
         bulletsList.innerHTML = '';
         const bullets = pageData.bullets || [];
-        bullets.forEach(b => {
+        bullets.forEach((b, idx) => {
             const li = document.createElement('li');
-            li.className = "flex items-start space-x-3 bg-white/70 p-3 rounded-xl border border-slate-100 shadow-sm";
+            li.id = `bullet-item-${idx + 1}`;
+            li.className = `reveal-item flex items-start space-x-3 bg-white/70 p-3 rounded-xl border border-slate-100 shadow-sm transition-all duration-300 ${currentRevealStep > 0 && idx >= currentRevealStep ? 'reveal-hidden' : 'reveal-visible'}`;
             li.innerHTML = `<span class="w-3 h-3 rounded-full bg-blue-600 mt-1 shrink-0"></span><span class="leading-relaxed font-semibold text-slate-800">${b}</span>`;
             bulletsList.appendChild(li);
         });
+
+        // Áp dụng hiệu ứng mượt mà cho card
+        applySlideTransition(card, direction, transition);
 
         currentFitMode = 'page';
         applyZoomAndFit();

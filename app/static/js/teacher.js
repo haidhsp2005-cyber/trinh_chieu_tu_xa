@@ -276,9 +276,47 @@ function preloadNextSlide(pageNum, doc) {
     }
 }
 
-// ----------------- SLIDE NAVIGATION & RENDERING (Chuyển trang tức thì 0ms) -----------------
+// ----------------- SLIDE TRANSITIONS & ANIMATIONS (Hiệu ứng chuyển slide mượt mà) -----------------
+let currentTransition = 'slide'; // 'slide', 'fade', 'zoom', 'flip', 'none'
+let currentRevealStep = 0;
+let totalRevealSteps = 0;
 
-function renderPage(pageNum) {
+function changeTransition(trans) {
+    currentTransition = trans;
+}
+
+function applySlideTransition(el, direction = 'next', transition = currentTransition) {
+    if (!el || transition === 'none') return;
+    el.classList.remove(
+        'slide-transition-slide-next',
+        'slide-transition-slide-prev',
+        'slide-transition-fade',
+        'slide-transition-zoom',
+        'slide-transition-flip'
+    );
+    void el.offsetWidth; // Force DOM reflow to restart CSS animation smoothly
+    let animClass = '';
+    if (transition === 'slide') {
+        animClass = (direction === 'prev') ? 'slide-transition-slide-prev' : 'slide-transition-slide-next';
+    } else if (transition === 'fade') {
+        animClass = 'slide-transition-fade';
+    } else if (transition === 'zoom') {
+        animClass = 'slide-transition-zoom';
+    } else if (transition === 'flip') {
+        animClass = 'slide-transition-flip';
+    }
+
+    if (animClass) {
+        el.classList.add(animClass);
+        setTimeout(() => {
+            el.classList.remove(animClass);
+        }, 400);
+    }
+}
+
+// ----------------- SLIDE NAVIGATION & RENDERING (Chuyển trang tức thì & mượt mà) -----------------
+
+function renderPage(pageNum, direction = 'next', transition = currentTransition) {
     pageNum = parseInt(pageNum, 10) || 1;
     currentSession.current_page = pageNum;
     const doc = currentSession.doc_data;
@@ -308,14 +346,16 @@ function renderPage(pageNum) {
         const img = document.getElementById('slide-img');
         const targetUrl = pageData.image_url;
 
-        // Chuyển trang tức thì: gán src trực tiếp, trình duyệt sẽ tự lấy từ cache RAM/disk hoặc tải về ngay
         if (img.getAttribute('data-active-url') !== targetUrl) {
             img.setAttribute('data-active-url', targetUrl);
             img.src = targetUrl;
             img.classList.remove('hidden');
             document.getElementById('slide-card').classList.add('hidden');
 
-            // Dự phòng: Nếu server Render đang bận sinh trang on-demand, tự động thử lại sau 500ms
+            // Áp dụng hiệu ứng chuyển động mượt mà
+            applySlideTransition(img, direction, transition);
+
+            // Dự phòng retry nếu ảnh on-demand đang được tạo
             let retries = 0;
             img.onerror = () => {
                 if (retries < 3 && currentSession.current_page === pageNum) {
@@ -334,7 +374,6 @@ function renderPage(pageNum) {
 
         applyZoomAndFit();
         setupCanvasResolution();
-        // Tiền tải ngầm trang kế tiếp để lần bấm sau hiển thị tức thì
         preloadNextSlide(pageNum, doc);
     } else {
         document.getElementById('slide-img').classList.add('hidden');
@@ -348,12 +387,19 @@ function renderPage(pageNum) {
         const bulletsList = document.getElementById('card-bullets');
         bulletsList.innerHTML = '';
         const bullets = pageData.bullets || [];
-        bullets.forEach(b => {
+        totalRevealSteps = bullets.length;
+        currentRevealStep = currentRevealStep || 0;
+
+        bullets.forEach((b, idx) => {
             const li = document.createElement('li');
-            li.className = "flex items-start space-x-3 bg-white/70 p-3 rounded-xl border border-slate-100 shadow-sm";
+            li.id = `bullet-item-${idx + 1}`;
+            li.className = `reveal-item flex items-start space-x-3 bg-white/70 p-3 rounded-xl border border-slate-100 shadow-sm transition-all duration-300 ${currentRevealStep > 0 && idx >= currentRevealStep ? 'reveal-hidden' : 'reveal-visible'}`;
             li.innerHTML = `<span class="w-3 h-3 rounded-full bg-blue-600 mt-1 shrink-0"></span><span class="leading-relaxed font-semibold text-slate-800">${b}</span>`;
             bulletsList.appendChild(li);
         });
+
+        // Áp dụng hiệu ứng mượt mà cho card
+        applySlideTransition(card, direction, transition);
 
         fitMode = 'page';
         applyZoomAndFit();
@@ -385,22 +431,52 @@ function prevPage() {
 
 function nextPage() {
     const total = currentSession.doc_data ? currentSession.doc_data.total_pages : 1;
+    // Nếu có các ý trong slide chưa hiện hết, bấm Next sẽ hiện ý tiếp theo trước
+    if (currentSession.doc_data && currentSession.doc_data.mode !== 'image' && currentRevealStep < totalRevealSteps) {
+        revealNextBullet();
+        return;
+    }
+
     if (currentSession.current_page < total) {
         goToPage(currentSession.current_page + 1);
     }
 }
 
+function revealNextBullet() {
+    if (currentRevealStep < totalRevealSteps) {
+        currentRevealStep++;
+        const item = document.getElementById(`bullet-item-${currentRevealStep}`);
+        if (item) {
+            item.classList.remove('reveal-hidden');
+            item.classList.add('reveal-visible');
+        }
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'REVEAL_STEP',
+                step: currentRevealStep
+            }));
+        }
+    }
+}
+
 function goToPage(page) {
     page = parseInt(page, 10) || 1;
+    const oldPage = currentSession.current_page || 1;
+    const direction = (page >= oldPage) ? 'next' : 'prev';
+
+    currentRevealStep = 0;
     currentSession.drawings = [];
     clearCanvas();
-    renderPage(page);
+    renderPage(page, direction, currentTransition);
+
     const scrollCont = document.getElementById('stage-scroll-container');
     if (scrollCont) scrollCont.scrollTop = 0;
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
             type: 'PAGE_CHANGE',
-            page: page
+            page: page,
+            direction: direction,
+            transition: currentTransition
         }));
         ws.send(JSON.stringify({
             type: 'CLEAR_DRAWINGS'
@@ -1569,6 +1645,49 @@ async function executeExitLesson() {
     }
 }
 window.executeExitLesson = executeExitLesson;
+
+// ----------------- NATIVE PPT VIEWER (OFFICE ONLINE EMBED) -----------------
+function openNativePPTViewer() {
+    const modal = document.getElementById('modal-native-ppt');
+    const frame = document.getElementById('native-ppt-frame');
+    const loading = document.getElementById('native-ppt-loading');
+    if (!modal || !frame) return;
+
+    const matId = (currentSession && currentSession.material_id) ? currentSession.material_id : ROOM_ID.replace('room_', '');
+    const host = window.location.origin;
+    const publicUrl = `${host}/download/${matId}`;
+
+    frame.src = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(publicUrl)}`;
+    modal.classList.remove('hidden');
+    if (loading) loading.classList.remove('hidden');
+
+    frame.onload = () => {
+        if (loading) loading.classList.add('hidden');
+    };
+}
+window.openNativePPTViewer = openNativePPTViewer;
+
+function closeNativePPTViewer() {
+    const modal = document.getElementById('modal-native-ppt');
+    const frame = document.getElementById('native-ppt-frame');
+    if (modal) modal.classList.add('hidden');
+    if (frame) frame.src = '';
+}
+window.closeNativePPTViewer = closeNativePPTViewer;
+
+function toggleFullScreenPPTFrame() {
+    const frame = document.getElementById('native-ppt-frame');
+    if (!frame) return;
+    if (frame.requestFullscreen) {
+        frame.requestFullscreen();
+    } else if (frame.webkitRequestFullscreen) {
+        frame.webkitRequestFullscreen();
+    } else if (frame.msRequestFullscreen) {
+        frame.msRequestFullscreen();
+    }
+}
+window.toggleFullScreenPPTFrame = toggleFullScreenPPTFrame;
+window.changeTransition = changeTransition;
 
 // Mở khoá AudioContext của Giáo viên ngay khi có thao tác bất kỳ (Click, chạm, bấm phím)
 document.addEventListener('click', () => { initOrResumeTeacherAudioPlayer(); }, { passive: true });

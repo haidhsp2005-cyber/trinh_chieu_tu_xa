@@ -81,7 +81,64 @@
             background-color: #020617 !important;
             box-shadow: none !important;
             border-radius: 0 !important;
-            margin: 0 !important;
+        }
+
+        /* Smooth Slide Transitions Animations */
+        @keyframes animSlideInRight {
+            0% { transform: translate3d(50px, 0, 0); opacity: 0; }
+            100% { transform: translate3d(0, 0, 0); opacity: 1; }
+        }
+        @keyframes animSlideInLeft {
+            0% { transform: translate3d(-50px, 0, 0); opacity: 0; }
+            100% { transform: translate3d(0, 0, 0); opacity: 1; }
+        }
+        @keyframes animFadeIn {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        @keyframes animZoomIn {
+            0% { transform: scale(0.94); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes animFlipIn {
+            0% { transform: perspective(900px) rotateY(12deg); opacity: 0; }
+            100% { transform: perspective(900px) rotateY(0deg); opacity: 1; }
+        }
+
+        .slide-transition-slide-next {
+            animation: animSlideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+            will-change: transform, opacity;
+        }
+        .slide-transition-slide-prev {
+            animation: animSlideInLeft 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+            will-change: transform, opacity;
+        }
+        .slide-transition-fade {
+            animation: animFadeIn 0.3s ease-out both;
+            will-change: opacity;
+        }
+        .slide-transition-zoom {
+            animation: animZoomIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+            will-change: transform, opacity;
+        }
+        .slide-transition-flip {
+            animation: animFlipIn 0.38s ease-out both;
+            will-change: transform, opacity;
+        }
+
+        /* Step-by-step element reveal */
+        .reveal-item {
+            transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .reveal-hidden {
+            opacity: 0 !important;
+            transform: translate3d(0, 12px, 0) !important;
+            pointer-events: none !important;
+        }
+        .reveal-visible {
+            opacity: 1 !important;
+            transform: translate3d(0, 0, 0) !important;
+            pointer-events: auto !important;
         }
     </style>
 </head>
@@ -343,6 +400,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/student.js?v=25"></script>
+    <script src="/static/js/student.js?v=26"></script>
 </body>
 </html>

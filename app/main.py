@@ -586,16 +586,28 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
                     "message": "Giáo viên đã tắt không trình chiếu bài giảng này."
                 })
 
-            # 1. Chuyển trang Slide
+            # 1. Chuyển trang Slide (Hỗ trợ hiệu ứng Transition mượt mà)
             elif msg_type == "PAGE_CHANGE":
                 page = data.get("page", 1)
+                direction = data.get("direction", "next")
+                transition = data.get("transition", "slide")
                 session.current_page = page
                 session.drawings = []
                 session.laser = {"x": -1, "y": -1, "active": False}
-                # Phát cho toàn bộ học sinh
+                # Phát cho toàn bộ học sinh kèm hiệu ứng chuyển slide đồng bộ
                 await _broadcast_to_students(session, {
                     "type": "PAGE_CHANGE",
-                    "page": page
+                    "page": page,
+                    "direction": direction,
+                    "transition": transition
+                })
+
+            # 1b. Hiệu ứng xuất hiện từng dòng / từng ý (Step-by-step element reveal)
+            elif msg_type == "REVEAL_STEP":
+                step = data.get("step", 0)
+                await _broadcast_to_students(session, {
+                    "type": "REVEAL_STEP",
+                    "step": step
                 })
 
             # 2. Con trỏ Laser ảo (Laser pointer)
