@@ -880,15 +880,38 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
             })
 
 async def _broadcast_to_students(session: ClassroomSession, payload: dict):
-    disconnected = []
-    for cid, ws in list(session.students.items()):
+    if not session.students:
+        return
+
+    msg_type = payload.get("type", "")
+    is_heavy_frame = (msg_type == "SCREEN_FRAME")
+    try:
+        json_text = json.dumps(payload)
+    except Exception:
+        return
+
+    async def _send_one(cid: str, ws: WebSocket):
         try:
-            await ws.send_json(payload)
+            if is_heavy_frame:
+                # Dành riêng cho video/khung hình chia sẻ màn hình: timeout 0.25s tránh nghẽn
+                # Nếu học sinh nào mạng lag, CHỈ BỎ QUA KHUNG HÌNH ĐÓ chứ TUYỆT ĐỐI KHÔNG ngắt kết nối học sinh!
+                await asyncio.wait_for(ws.send_text(json_text), timeout=0.25)
+            else:
+                await ws.send_text(json_text)
+            return None
+        except asyncio.TimeoutError:
+            return None
         except Exception:
-            disconnected.append(cid)
-    for cid in disconnected:
-        if cid in session.students:
-            del session.students[cid]
+            if is_heavy_frame:
+                return None
+            return cid
+
+    tasks = [_send_one(cid, ws) for cid, ws in list(session.students.items())]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for res in results:
+        if isinstance(res, str) and res in session.students:
+            del session.students[res]
 
 async def _broadcast_to_all(session: ClassroomSession, payload: dict):
     if session.teacher_ws:

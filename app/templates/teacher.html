@@ -114,7 +114,7 @@
         <button onclick="openShareModal()" class="px-2.5 py-1 bg-white text-rose-700 rounded-lg text-xs font-bold hover:bg-rose-50 transition shrink-0" title="Mở mã QR cho học sinh quét">
             <i class="fa-solid fa-qrcode mr-1"></i><span class="hidden sm:inline">Mã QR</span>
         </button>
-        <button onclick="toggleScreenShare()" class="px-3 py-1 bg-slate-950 hover:bg-black text-white rounded-lg text-xs font-bold transition shrink-0">
+        <button onclick="stopScreenShare()" class="px-3 py-1 bg-slate-950 hover:bg-black text-white rounded-lg text-xs font-bold transition shrink-0" title="Dừng chia sẻ màn hình">
             Dừng
         </button>
     </div>
@@ -591,6 +591,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/teacher.js?v=27"></script>
+    <script src="/static/js/teacher.js?v=28"></script>
 </body>
 </html>

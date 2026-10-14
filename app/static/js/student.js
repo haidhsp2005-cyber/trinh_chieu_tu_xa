@@ -251,8 +251,12 @@ function connectWebSocket() {
                     screenCont.classList.remove('hidden');
                     slideCont.classList.add('hidden');
                 }
-                if (loading) loading.classList.add('hidden');
-                screenImg.src = msg.frame;
+                if (loading && !loading.classList.contains('hidden')) {
+                    loading.classList.add('hidden');
+                }
+                if (msg.frame) {
+                    screenImg.src = msg.frame;
+                }
             }
         }
 
@@ -678,6 +682,7 @@ function renderPage(pageNum, direction = 'next', transition = 'none') {
 function switchDisplayMode(mode) {
     const screenCont = document.getElementById('screen-share-container');
     const slideCont = document.getElementById('slide-container');
+    const screenImg = document.getElementById('screen-frame-img');
     const loading = document.getElementById('screen-share-loading');
 
     if (mode === 'screen') {
@@ -688,6 +693,8 @@ function switchDisplayMode(mode) {
         if (screenCont) screenCont.classList.add('hidden');
         if (slideCont) slideCont.classList.remove('hidden');
         if (loading) loading.classList.add('hidden');
+        if (screenImg) screenImg.src = ''; // Giải phóng bộ nhớ ảnh màn hình lập tức
+        renderPage(sessionState.current_page || 1, 'next', 'none');
     }
 }
 
