@@ -277,12 +277,22 @@ function preloadNextSlide(pageNum, doc) {
 }
 
 // ----------------- SLIDE TRANSITIONS & ANIMATIONS (Hiệu ứng chuyển slide mượt mà) -----------------
-let currentTransition = 'slide'; // 'slide', 'fade', 'zoom', 'flip', 'none'
+let currentTransition = 'none'; // Mặc định tắt hiệu ứng, chỉ mở khi giáo viên chọn
 let currentRevealStep = 0;
 let totalRevealSteps = 0;
 
 function changeTransition(trans) {
     currentTransition = trans;
+    const names = {
+        'none': 'Đã tắt hiệu ứng chuyển trang',
+        'slide': 'Đã bật hiệu ứng: Trượt mượt',
+        'fade': 'Đã bật hiệu ứng: Mờ dần (Fade)',
+        'zoom': 'Đã bật hiệu ứng: Thu phóng (Zoom)',
+        'flip': 'Đã bật hiệu ứng: Lật 3D (Flip)'
+    };
+    if (typeof showLiveNotification === 'function') {
+        showLiveNotification(names[trans] || `Hiệu ứng: ${trans}`, 'info', 'fa-wand-magic-sparkles');
+    }
 }
 
 function applySlideTransition(el, direction = 'next', transition = currentTransition) {

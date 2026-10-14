@@ -173,7 +173,7 @@ function connectWebSocket() {
             currentRevealStep = 0;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             laserDot.classList.add('hidden');
-            renderPage(msg.page, msg.direction || 'next', msg.transition || 'slide');
+            renderPage(msg.page, msg.direction || 'next', msg.transition || 'none');
         }
 
         // 2.1. Teacher Revealed Step / Bullet in Slide
@@ -589,7 +589,7 @@ function applySlideTransition(el, direction = 'next', transition = 'slide') {
     }
 }
 
-function renderPage(pageNum, direction = 'next', transition = 'slide') {
+function renderPage(pageNum, direction = 'next', transition = 'none') {
     const doc = sessionState.doc_data;
 
     if (!doc || !doc.pages || doc.pages.length === 0) {

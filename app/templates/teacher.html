@@ -426,11 +426,11 @@
                 <div class="hidden sm:flex items-center space-x-1 px-2 py-1 bg-slate-900 rounded-xl border border-slate-800 text-xs shrink-0" title="Chọn hiệu ứng chuyển động khi chuyển slide (Transitions)">
                     <i class="fa-solid fa-wand-magic-sparkles text-amber-400 text-[10px]"></i>
                     <select id="select-slide-transition" onchange="changeTransition(this.value)" class="bg-transparent text-slate-200 text-xs font-semibold focus:outline-none cursor-pointer">
-                        <option value="slide" selected>Trượt mượt</option>
+                        <option value="none" selected>Tắt hiệu ứng</option>
+                        <option value="slide">Trượt mượt</option>
                         <option value="fade">Mờ dần</option>
                         <option value="zoom">Thu phóng</option>
                         <option value="flip">Lật 3D</option>
-                        <option value="none">Tắt hiệu ứng</option>
                     </select>
                 </div>
             </div>
@@ -601,6 +601,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/teacher.js?v=26"></script>
+    <script src="/static/js/teacher.js?v=27"></script>
 </body>
 </html>
