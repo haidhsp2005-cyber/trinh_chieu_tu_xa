@@ -105,6 +105,89 @@ async def serve_cached_slide(doc_id: str, filename: str):
 
     return Response(status_code=404)
 
+# ----------------- TẢI FILE GỐC (DOWNLOAD MATERIALS AN TOÀN & CHÍNH XÁC) -----------------
+@app.get("/download/{material_id}")
+async def download_material_endpoint(material_id: str):
+    import urllib.parse
+    item = get_material(material_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu trong hệ thống.")
+
+    file_path = item.get("filepath", "")
+    target_filename = item.get("filename", "")
+
+    # 1. Kiểm tra trực tiếp file_path đã lưu
+    if not file_path or not os.path.exists(file_path):
+        # 2. Tìm trong thư mục UPLOAD_DIR theo basename
+        if file_path:
+            cand = os.path.join(UPLOAD_DIR, os.path.basename(file_path))
+            if os.path.exists(cand):
+                file_path = cand
+
+    # 3. Tìm theo tên filename gốc trong UPLOAD_DIR
+    if not file_path or not os.path.exists(file_path):
+        if os.path.exists(UPLOAD_DIR):
+            for f in os.listdir(UPLOAD_DIR):
+                if f == target_filename or f.endswith(f"_{target_filename}") or f.endswith(target_filename):
+                    file_path = os.path.join(UPLOAD_DIR, f)
+                    break
+
+    # 4. Fallback tìm file PDF trong cache nếu file gốc bị mất sau khi restart
+    if not file_path or not os.path.exists(file_path):
+        from app.document_parser import _get_clean_doc_id
+        doc_id = _get_clean_doc_id(target_filename or item.get("title", ""))
+        cache_sub = os.path.join(CACHE_DIR, doc_id)
+        if os.path.isdir(cache_sub):
+            pdf_cands = [os.path.join(cache_sub, f) for f in os.listdir(cache_sub) if f.endswith(".pdf")]
+            if pdf_cands:
+                file_path = pdf_cands[0]
+
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Tập tin không còn tồn tại trên máy chủ.")
+
+    download_name = target_filename or os.path.basename(file_path)
+    if file_path.endswith(".pdf") and not download_name.endswith(".pdf"):
+        download_name = os.path.splitext(download_name)[0] + ".pdf"
+
+    encoded_name = urllib.parse.quote(download_name)
+    headers = {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_name}"
+    }
+    return FileResponse(file_path, filename=download_name, headers=headers)
+
+@app.get("/files/{filename:path}")
+async def serve_file_download_fallback(filename: str):
+    import urllib.parse
+    decoded_fn = urllib.parse.unquote(filename)
+
+    # 1. Kiểm tra trực tiếp tên file trong UPLOAD_DIR
+    for fn in [filename, decoded_fn]:
+        direct = os.path.join(UPLOAD_DIR, fn)
+        if os.path.exists(direct) and os.path.isfile(direct):
+            enc = urllib.parse.quote(os.path.basename(fn))
+            return FileResponse(direct, filename=fn, headers={"Content-Disposition": f"attachment; filename*=UTF-8''{enc}"})
+
+    # 2. Tìm qua materials.json theo filename hoặc id
+    materials = list_materials()
+    for m in materials:
+        if m.get("filename") == decoded_fn or m.get("id") == decoded_fn or m.get("filename") == filename:
+            fp = m.get("filepath", "")
+            if fp and os.path.exists(fp):
+                out_name = m.get("filename", os.path.basename(fp))
+                enc = urllib.parse.quote(out_name)
+                return FileResponse(fp, filename=out_name, headers={"Content-Disposition": f"attachment; filename*=UTF-8''{enc}"})
+
+    # 3. Tìm file có prefix uuid trong UPLOAD_DIR
+    if os.path.exists(UPLOAD_DIR):
+        for f in os.listdir(UPLOAD_DIR):
+            if f.endswith(f"_{decoded_fn}") or f.endswith(decoded_fn) or f == decoded_fn:
+                matched = os.path.join(UPLOAD_DIR, f)
+                if os.path.isfile(matched):
+                    enc = urllib.parse.quote(decoded_fn)
+                    return FileResponse(matched, filename=decoded_fn, headers={"Content-Disposition": f"attachment; filename*=UTF-8''{enc}"})
+
+    return Response(status_code=404, content="File not found")
+
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 app.mount("/cache", StaticFiles(directory=CACHE_DIR), name="cache")
 app.mount("/files", StaticFiles(directory=UPLOAD_DIR), name="files")

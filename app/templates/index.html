@@ -243,7 +243,7 @@
                                 <span>Bắt đầu trình chiếu</span>
                             </a>
                             <div class="flex items-center space-x-1">
-                                <a href="/files/{{ item.filename }}" download class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="Tải file gốc">
+                                <a href="/download/{{ item.id }}" download="{{ item.filename }}" class="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Tải file gốc">
                                     <i class="fa-solid fa-download"></i>
                                 </a>
                                 <button onclick="deleteMaterial('{{ item.id }}')" class="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Xóa tài liệu">
