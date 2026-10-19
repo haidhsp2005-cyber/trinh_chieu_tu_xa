@@ -239,34 +239,6 @@ function connectWebSocket() {
             }
         }
 
-// ----------------- ZERO-LAG SCREEN SHARE FRAME PROCESSOR -----------------
-let pendingScreenFrame = null;
-let isScreenImgBusy = false;
-
-function processNextScreenFrame() {
-    if (!pendingScreenFrame || isScreenImgBusy) return;
-    const screenImg = document.getElementById('screen-frame-img');
-    if (!screenImg) return;
-
-    isScreenImgBusy = true;
-    const frameToRender = pendingScreenFrame;
-    pendingScreenFrame = null; // Luôn giải phóng và chỉ giữ frame mới nhất
-
-    screenImg.onload = () => {
-        isScreenImgBusy = false;
-        if (pendingScreenFrame) {
-            requestAnimationFrame(processNextScreenFrame);
-        }
-    };
-    screenImg.onerror = () => {
-        isScreenImgBusy = false;
-        if (pendingScreenFrame) {
-            requestAnimationFrame(processNextScreenFrame);
-        }
-    };
-    screenImg.src = frameToRender;
-}
-
         // 9. Nhận khung hình chia sẻ màn hình trực tiếp từ Giáo viên (Realtime 0-Lag)
         else if (msg.type === 'SCREEN_FRAME') {
             const screenCont = document.getElementById('screen-share-container');
@@ -706,6 +678,34 @@ function renderPage(pageNum, direction = 'next', transition = 'none') {
         currentFitMode = 'page';
         applyZoomAndFit();
     }
+}
+
+// ----------------- ZERO-LAG SCREEN SHARE FRAME PROCESSOR -----------------
+let pendingScreenFrame = null;
+let isScreenImgBusy = false;
+
+function processNextScreenFrame() {
+    if (!pendingScreenFrame || isScreenImgBusy) return;
+    const screenImg = document.getElementById('screen-frame-img');
+    if (!screenImg) return;
+
+    isScreenImgBusy = true;
+    const frameToRender = pendingScreenFrame;
+    pendingScreenFrame = null; // Luôn giải phóng và chỉ giữ frame mới nhất
+
+    screenImg.onload = () => {
+        isScreenImgBusy = false;
+        if (pendingScreenFrame) {
+            requestAnimationFrame(processNextScreenFrame);
+        }
+    };
+    screenImg.onerror = () => {
+        isScreenImgBusy = false;
+        if (pendingScreenFrame) {
+            requestAnimationFrame(processNextScreenFrame);
+        }
+    };
+    screenImg.src = frameToRender;
 }
 
 function switchDisplayMode(mode) {
