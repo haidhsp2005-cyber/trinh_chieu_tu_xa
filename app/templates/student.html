@@ -159,9 +159,9 @@
 
         <div class="flex items-center space-x-1.5 sm:space-x-2.5 shrink-0">
             <!-- Số lượng học sinh đang cùng xem -->
-            <div id="student-counter" class="hidden sm:flex items-center space-x-1 px-2 py-0.5 rounded-full bg-slate-800/80 border border-slate-700 text-[10px] sm:text-[11px] text-slate-300 font-semibold shrink-0" title="Số học sinh đang cùng xem bài giảng">
+            <div id="student-counter" class="flex items-center space-x-1 px-1.5 sm:px-2 py-0.5 rounded-full bg-slate-800/80 border border-slate-700 text-[10px] sm:text-[11px] text-slate-300 font-semibold shrink-0" title="Số học sinh đang cùng xem bài giảng">
                 <i class="fa-solid fa-users text-blue-400"></i>
-                <span id="student-count-val">0</span>
+                <span id="student-count-val">{{ session.student_count if session and session.student_count is defined else 0 }}</span>
                 <span class="hidden md:inline"> HS</span>
             </div>
 
@@ -215,6 +215,15 @@
     <button id="mobile-unmute-prompt" onclick="unlockStudentAudio()" type="button" class="fixed top-14 left-1/2 -translate-x-1/2 z-[100] bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-5 py-2.5 rounded-full shadow-2xl flex items-center space-x-2 border-2 border-emerald-300 backdrop-blur cursor-pointer hidden transition animate-bounce">
         <i class="fa-solid fa-volume-high text-white text-base"></i>
         <span class="text-xs sm:text-sm font-bold tracking-wide">Thầy/Cô đang nói • Chạm để BẬT TIẾNG</span>
+    </button>
+
+    <!-- Live Toast Container cho học sinh (Thông báo Thầy/Cô mở chat, có tin nhắn mới, ...) -->
+    <div id="student-toast-container" class="fixed top-12 left-1/2 -translate-x-1/2 z-50 flex flex-col space-y-2 pointer-events-none w-[90%] max-w-sm"></div>
+
+    <!-- NÚT BẤM CHAT NỔI (FAB) CHO HỌC SINH TRÊN ĐIỆN THOẠI -->
+    <button id="student-chat-fab" onclick="toggleStudentChat()" type="button" class="fixed bottom-12 right-3 z-40 sm:hidden w-11 h-11 rounded-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-xl flex items-center justify-center border-2 border-cyan-400 active:scale-95 transition cursor-pointer" title="Hỏi đáp & Trò chuyện">
+        <i class="fa-solid fa-comments text-base"></i>
+        <span id="student-chat-fab-badge" class="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center hidden animate-bounce">0</span>
     </button>
 
     <!-- STUDENT CHAT MODAL / DRAWER -->
@@ -400,6 +409,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/student.js?v=30"></script>
+    <script src="/static/js/student.js?v=31"></script>
 </body>
 </html>

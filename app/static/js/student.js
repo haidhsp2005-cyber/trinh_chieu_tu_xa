@@ -28,6 +28,11 @@ function init() {
 
         updateStudentNameUI();
 
+        if (sessionState && sessionState.student_count !== undefined) {
+            const cntEl = document.getElementById('student-count-val');
+            if (cntEl) cntEl.textContent = sessionState.student_count;
+        }
+
         if (sessionState && sessionState.is_active === false) {
             showSessionEndedScreen(sessionState.title || "Bài giảng trực tuyến");
         } else if (sessionState && sessionState.doc_data) {
@@ -84,11 +89,17 @@ function setupCanvasResolution() {
 
 // ----------------- WEBSOCKET REALTIME SYNC -----------------
 let reconnectTimer = null;
+let studentHeartbeat = null;
 
 function connectWebSocket() {
     if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
+    }
+
+    if (studentHeartbeat) {
+        clearInterval(studentHeartbeat);
+        studentHeartbeat = null;
     }
 
     if (ws) {
@@ -109,13 +120,23 @@ function connectWebSocket() {
     ws.onopen = () => {
         console.log("WebSocket connected as Student");
         updateSyncStatus(true);
+        // Gửi Heartbeat PING định kỳ 15s để Render & mạng 4G không ngắt kết nối
+        studentHeartbeat = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'PING' }));
+            }
+        }, 15000);
     };
 
     ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
 
+        if (msg.type === 'PONG') {
+            return;
+        }
+
         // 1. Initial State from Teacher
-        if (msg.type === 'INIT_STATE') {
+        else if (msg.type === 'INIT_STATE') {
             ownClientId = msg.client_id;
             sessionState = msg.state || {};
             if (sessionState.is_active === false) {
@@ -123,6 +144,10 @@ function connectWebSocket() {
                 return;
             } else {
                 hideSessionEndedScreen();
+            }
+            if (sessionState && sessionState.student_count !== undefined) {
+                const cntEl = document.getElementById('student-count-val');
+                if (cntEl) cntEl.textContent = sessionState.student_count;
             }
             if (sessionState && sessionState.doc_data) {
                 const d = sessionState.doc_data;
@@ -322,7 +347,7 @@ function connectWebSocket() {
         // 18. Trạng thái Bật/Tắt Khung Chat từ Giáo viên
         else if (msg.type === 'CHAT_LOCK_STATUS') {
             sessionState.chat_enabled = !!msg.chat_enabled;
-            updateStudentChatLockUI(msg.chat_enabled);
+            updateStudentChatLockUI(msg.chat_enabled, true);
         }
 
         // 19. Trạng thái Bật/Tắt Micro Học sinh từ Giáo viên
@@ -341,6 +366,10 @@ function connectWebSocket() {
     };
 
     ws.onclose = () => {
+        if (studentHeartbeat) {
+            clearInterval(studentHeartbeat);
+            studentHeartbeat = null;
+        }
         updateSyncStatus(false);
         console.warn("WebSocket closed, reconnecting in 2s...");
         if (!reconnectTimer) {
@@ -1004,11 +1033,60 @@ function changeStudentNamePrompt() {
     }
 }
 
-function toggleStudentChat() {
+// ----------------- THÔNG BÁO NỔI THỜI GIAN THỰC (STUDENT TOAST) -----------------
+function showStudentNotification(text, type = 'info', icon = 'fa-circle-info', onClick = null) {
+    let container = document.getElementById('student-toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'student-toast-container';
+        container.className = 'fixed top-12 left-1/2 -translate-x-1/2 z-50 flex flex-col space-y-2 pointer-events-none w-[90%] max-w-sm';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    const colorClasses = {
+        chat: 'bg-cyan-950/95 border-cyan-400 text-cyan-100 shadow-cyan-950/60 shadow-xl',
+        info: 'bg-slate-900/95 border-slate-700 text-white shadow-slate-950/60 shadow-xl',
+        join: 'bg-emerald-950/95 border-emerald-500 text-emerald-200 shadow-emerald-950/60 shadow-xl'
+    }[type] || 'bg-slate-900/95 border-slate-700 text-white shadow-xl';
+
+    toast.className = `flex items-center justify-between space-x-2 px-3.5 py-2.5 rounded-2xl border backdrop-blur text-xs font-semibold shadow-2xl transition-all duration-300 transform -translate-y-2 opacity-0 pointer-events-auto cursor-pointer ${colorClasses}`;
+    toast.innerHTML = `
+        <div class="flex items-center space-x-2 overflow-hidden flex-1">
+            <i class="fa-solid ${icon} text-sm shrink-0 text-cyan-400"></i>
+            <span class="truncate">${text}</span>
+        </div>
+        <span class="px-2.5 py-1 rounded-lg bg-cyan-600/90 hover:bg-cyan-500 text-white text-[11px] font-black shrink-0 shadow-sm">Mở</span>
+    `;
+
+    toast.onclick = () => {
+        if (onClick) onClick();
+        toast.remove();
+    };
+
+    container.appendChild(toast);
+    requestAnimationFrame(() => {
+        toast.classList.remove('-translate-y-2', 'opacity-0');
+    });
+
+    setTimeout(() => {
+        toast.classList.add('opacity-0', '-translate-y-2');
+        setTimeout(() => toast.remove(), 350);
+    }, 5000);
+}
+
+function toggleStudentChat(forceOpen = null) {
     const modal = document.getElementById('student-chat-modal');
     if (!modal) return;
 
-    isStudentChatOpen = !isStudentChatOpen;
+    if (forceOpen === true) {
+        isStudentChatOpen = true;
+    } else if (forceOpen === false) {
+        isStudentChatOpen = false;
+    } else {
+        isStudentChatOpen = !isStudentChatOpen;
+    }
+
     if (isStudentChatOpen) {
         modal.classList.remove('hidden');
         studentUnreadChatCount = 0;
@@ -1016,7 +1094,7 @@ function toggleStudentChat() {
         const msgCont = document.getElementById('student-chat-messages');
         if (msgCont) msgCont.scrollTop = msgCont.scrollHeight;
         const input = document.getElementById('student-chat-input');
-        if (input) setTimeout(() => input.focus(), 100);
+        if (input && !input.disabled) setTimeout(() => input.focus(), 150);
     } else {
         modal.classList.add('hidden');
     }
@@ -1024,12 +1102,21 @@ function toggleStudentChat() {
 
 function updateStudentChatBadge() {
     const badge = document.getElementById('student-chat-badge');
-    if (!badge) return;
+    const fabBadge = document.getElementById('student-chat-fab-badge');
+    const val = studentUnreadChatCount > 99 ? '99+' : studentUnreadChatCount;
+
     if (studentUnreadChatCount > 0 && !isStudentChatOpen) {
-        badge.textContent = studentUnreadChatCount > 99 ? '99+' : studentUnreadChatCount;
-        badge.classList.remove('hidden');
+        if (badge) {
+            badge.textContent = val;
+            badge.classList.remove('hidden');
+        }
+        if (fabBadge) {
+            fabBadge.textContent = val;
+            fabBadge.classList.remove('hidden');
+        }
     } else {
-        badge.classList.add('hidden');
+        if (badge) badge.classList.add('hidden');
+        if (fabBadge) fabBadge.classList.add('hidden');
     }
 }
 
@@ -1080,6 +1167,11 @@ function handleIncomingStudentChatMessage(msg) {
     if (!isStudentChatOpen) {
         studentUnreadChatCount++;
         updateStudentChatBadge();
+        const sName = msg.sender || 'Tin nhắn mới';
+        const sText = (msg.text || '').substring(0, 40);
+        showStudentNotification(`${sName}: ${sText}`, 'chat', 'fa-comment-dots', () => {
+            toggleStudentChat(true);
+        });
     }
 }
 
@@ -1405,11 +1497,12 @@ function handlePeerStudentMicStatus(studentId, studentName, active) {
 }
 
 // ----------------- KHUNG CHAT & MICRO HỌC SINH LOCK STATUS UI -----------------
-function updateStudentChatLockUI(allowed) {
+function updateStudentChatLockUI(allowed, announce = false) {
     isStudentChatAllowed = !!allowed;
     const banner = document.getElementById('student-chat-lock-banner');
     const input = document.getElementById('student-chat-input');
     const sendBtn = document.getElementById('student-chat-send-btn');
+    const fab = document.getElementById('student-chat-fab');
 
     if (isStudentChatAllowed) {
         if (banner) banner.classList.add('hidden');
@@ -1422,16 +1515,31 @@ function updateStudentChatLockUI(allowed) {
             sendBtn.disabled = false;
             sendBtn.className = "px-3.5 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 active:scale-95 text-white rounded-xl text-xs font-bold transition shadow-md shadow-cyan-600/20 shrink-0 flex items-center space-x-1 cursor-pointer";
         }
+        if (fab) {
+            fab.classList.remove('opacity-50');
+            fab.classList.add('animate-bounce');
+            setTimeout(() => fab.classList.remove('animate-bounce'), 3000);
+        }
+        if (announce) {
+            showStudentNotification("Thầy/Cô đã mở khung Hỏi đáp & Trò chuyện. Chạm để chat!", "chat", "fa-comments", () => {
+                toggleStudentChat(true);
+            });
+            // Tự động mở luôn khung chat trên màn hình học sinh để học sinh gõ được ngay
+            toggleStudentChat(true);
+        }
     } else {
         if (banner) banner.classList.remove('hidden');
         if (input) {
             input.disabled = true;
             input.placeholder = "Thầy/Cô đang tạm tắt khung chat...";
-            input.className = "flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-400 placeholder-slate-600 focus:outline-none opacity-60 cursor-not-allowed";
+            input.className = "flex-1 bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-400 placeholder-slate-600 focus:outline-none opacity-60 cursor-not-allowed";
         }
         if (sendBtn) {
             sendBtn.disabled = true;
-            sendBtn.className = "px-3.5 py-2 bg-cyan-600 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1 shrink-0 opacity-40 cursor-not-allowed pointer-events-none";
+            sendBtn.className = "px-3.5 py-2 bg-cyan-900/60 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1 shrink-0 opacity-40 cursor-not-allowed pointer-events-none";
+        }
+        if (announce) {
+            showStudentNotification("Thầy/Cô đã tạm khóa khung chat để lớp tập trung bài giảng.", "info", "fa-comment-slash");
         }
     }
 }

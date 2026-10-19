@@ -575,6 +575,19 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, role: str):
             data = await websocket.receive_json()
             msg_type = data.get("type")
 
+            # Heartbeat PING / PONG để giữ kết nối 100% thời gian thực, chống rớt mạng trên Render / 4G
+            if msg_type == "PING":
+                await websocket.send_json({"type": "PONG"})
+                continue
+
+            elif msg_type == "REQ_STUDENT_COUNT":
+                await websocket.send_json({
+                    "type": "STUDENT_COUNT",
+                    "count": len(session.students),
+                    "event": "SYNC"
+                })
+                continue
+
             # 0. Giáo viên chủ động kết thúc & thoát bài giảng
             if msg_type == "TEACHER_EXIT":
                 session.is_active = False
@@ -909,9 +922,21 @@ async def _broadcast_to_students(session: ClassroomSession, payload: dict):
     tasks = [_send_one(cid, ws) for cid, ws in list(session.students.items())]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
+    removed_any = False
     for res in results:
         if isinstance(res, str) and res in session.students:
             del session.students[res]
+            removed_any = True
+
+    if removed_any and session.teacher_ws:
+        try:
+            await session.teacher_ws.send_json({
+                "type": "STUDENT_COUNT",
+                "count": len(session.students),
+                "event": "LEAVE"
+            })
+        except Exception:
+            pass
 
 async def _broadcast_to_all(session: ClassroomSession, payload: dict):
     if session.teacher_ws:

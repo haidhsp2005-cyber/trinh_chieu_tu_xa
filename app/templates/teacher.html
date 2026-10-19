@@ -138,7 +138,7 @@
             <!-- Live Students Count Badge -->
             <div class="flex items-center space-x-1.5 bg-slate-950 border border-slate-800 px-2.5 py-1 sm:py-1.5 rounded-full text-[11px] sm:text-xs text-slate-300 font-semibold shrink-0">
                 <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-                <span><span id="student-counter">0</span> <span class="hidden sm:inline">HS đang xem</span></span>
+                <span><span id="student-counter">{{ session.student_count if session and session.student_count is defined else 0 }}</span> <span class="hidden sm:inline">HS đang xem</span></span>
             </div>
 
             <!-- Nút Chia sẻ bài giảng nổi bật -->
@@ -591,6 +591,6 @@
         var ROOM_ID = window.ROOM_ID;
         var LAN_IP = window.LAN_IP;
     </script>
-    <script src="/static/js/teacher.js?v=30"></script>
+    <script src="/static/js/teacher.js?v=31"></script>
 </body>
 </html>

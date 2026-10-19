@@ -28,6 +28,11 @@ function init() {
         }
     }
 
+    if (currentSession && currentSession.student_count !== undefined) {
+        const el = document.getElementById('student-counter');
+        if (el) el.textContent = currentSession.student_count;
+    }
+
     setupCanvasResolution();
     window.addEventListener('resize', setupCanvasResolution);
 
@@ -78,48 +83,75 @@ function showLiveNotification(text, type = 'info', icon = 'fa-circle-info') {
     if (!container) {
         container = document.createElement('div');
         container.id = 'live-toast-container';
-        container.className = 'fixed bottom-20 right-4 z-50 flex flex-col space-y-2 pointer-events-none';
+        container.className = 'fixed top-14 right-4 z-50 flex flex-col space-y-2 pointer-events-none max-w-sm';
         document.body.appendChild(container);
     }
     const toast = document.createElement('div');
     const colorClasses = {
-        join: 'bg-emerald-950/90 border-emerald-500/60 text-emerald-200 shadow-emerald-950/50',
-        leave: 'bg-amber-950/90 border-amber-500/60 text-amber-200 shadow-amber-950/50',
-        chat: 'bg-cyan-950/90 border-cyan-500/60 text-cyan-200 shadow-cyan-950/50',
-        info: 'bg-slate-900/90 border-slate-700 text-white shadow-slate-950/50'
-    }[type] || 'bg-slate-900/90 border-slate-700 text-white';
+        join: 'bg-emerald-950/95 border-emerald-500/70 text-emerald-200 shadow-emerald-950/60 shadow-lg',
+        leave: 'bg-amber-950/95 border-amber-500/70 text-amber-200 shadow-amber-950/60 shadow-lg',
+        chat: 'bg-cyan-950/95 border-cyan-500/70 text-cyan-200 shadow-cyan-950/60 shadow-lg',
+        info: 'bg-slate-900/95 border-slate-700 text-white shadow-slate-950/60 shadow-lg'
+    }[type] || 'bg-slate-900/95 border-slate-700 text-white';
 
-    toast.className = `flex items-center space-x-2.5 px-3.5 py-2 rounded-xl border shadow-xl text-xs font-semibold backdrop-blur transition-all duration-300 transform translate-y-2 opacity-0 pointer-events-auto ${colorClasses}`;
+    toast.className = `flex items-center space-x-2.5 px-3.5 py-2 rounded-xl border shadow-xl text-xs font-semibold backdrop-blur transition-all duration-300 transform -translate-y-2 opacity-0 pointer-events-auto ${colorClasses}`;
     toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${text}</span>`;
     container.appendChild(toast);
 
     requestAnimationFrame(() => {
-        toast.classList.remove('translate-y-2', 'opacity-0');
+        toast.classList.remove('-translate-y-2', 'opacity-0');
     });
 
     setTimeout(() => {
-        toast.classList.add('opacity-0', 'translate-y-2');
+        toast.classList.add('opacity-0', '-translate-y-2');
         setTimeout(() => toast.remove(), 350);
     }, 4000);
 }
 
 // ----------------- WEBSOCKET REALTIME -----------------
+let teacherHeartbeat = null;
 
 function connectWebSocket() {
+    if (teacherHeartbeat) {
+        clearInterval(teacherHeartbeat);
+        teacherHeartbeat = null;
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/${ROOM_ID}/teacher`;
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
         console.log("WebSocket connected as Teacher");
+        // Giữ kết nối thời gian thực 100%, chống bị ngắt bởi Render / mạng 4G
+        teacherHeartbeat = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'PING' }));
+            }
+        }, 15000);
+    };
+
+    ws.onclose = () => {
+        if (teacherHeartbeat) {
+            clearInterval(teacherHeartbeat);
+            teacherHeartbeat = null;
+        }
+        console.warn("Teacher WebSocket closed, reconnecting in 2s...");
+        setTimeout(connectWebSocket, 2000);
     };
 
     ws.onmessage = async (event) => {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'INIT_STATE') {
+        if (msg.type === 'PONG') {
+            return;
+        } else if (msg.type === 'INIT_STATE') {
             if (msg.state && msg.state.doc_data) {
                 currentSession = msg.state;
                 renderPage(currentSession.current_page || 1);
+            }
+            if (msg.state && msg.state.student_count !== undefined) {
+                const el = document.getElementById('student-counter');
+                if (el) el.textContent = msg.state.student_count;
             }
             if (msg.state && msg.state.chat_messages) {
                 loadInitialChatMessages(msg.state.chat_messages);
